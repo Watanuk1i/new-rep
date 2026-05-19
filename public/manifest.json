@@ -1,0 +1,11 @@
+{
+  "name": "Безумный Азарт Отчаяния",
+  "short_name": "Хоуп Пик",
+  "description": "Элитная академия. Азартные игры. Скрытая система власти.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08070a",
+  "theme_color": "#08070a",
+  "orientation": "portrait",
+  "icons": []
+}
