@@ -117,7 +117,25 @@ export interface AppState {
   superGames: SuperGame[];
   events: AcademyEvent[];
   rumors: Rumor[];
+  challenges: GameChallenge[];
   currentUserId: string | null; // id of logged-in participant (or 'gm-host' / 'gm-queen')
 }
 
 export type Role = 'guest' | 'player' | 'queen' | 'gm';
+
+
+
+// === Малые игры ===
+export type MiniGameType = 'dice' | 'high_card' | 'roulette' | 'slots' | 'blackjack' | 'bluff_duel' | 'truth_or_bet';
+
+export interface GameChallenge {
+  id: string;
+  game_type: MiniGameType;
+  creator_id: string;
+  opponent_id: string | null; // null = открытый вызов
+  stake_amount: number;
+  status: 'pending' | 'accepted' | 'declined' | 'finished' | 'cancelled';
+  winner_id?: string | null;
+  result_data?: any;
+  created_at: number;
+}

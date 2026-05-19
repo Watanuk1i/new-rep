@@ -6,7 +6,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer, useState } from 'react';
 import {
   AppState, Participant, PariMarket, PariBet, PariComment,
-  Debt, SuperGame, AcademyEvent, Rumor, Role,
+  Debt, SuperGame, AcademyEvent, Rumor, Role, GameChallenge,
 } from './types';
 import { buildInitialState, SPECIAL_ACCOUNTS } from './seed';
 
@@ -36,7 +36,11 @@ type Action =
   | { type: 'remove_super_game'; id: string }
   | { type: 'add_event'; event: AcademyEvent }
   | { type: 'remove_event'; id: string }
-  | { type: 'add_rumor'; rumor: Rumor };
+  | { type: 'add_rumor'; rumor: Rumor }
+  | { type: 'add_challenge'; challenge: GameChallenge }
+  | { type: 'accept_challenge'; id: string; acceptor_id: string }
+  | { type: 'finish_challenge'; id: string; winner_id: string | null; result_data?: any }
+  | { type: 'cancel_challenge'; id: string };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -175,6 +179,41 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, events: state.events.filter(e => e.id !== action.id) };
     case 'add_rumor':
       return { ...state, rumors: [action.rumor, ...state.rumors] };
+    case 'add_challenge':
+      return { ...state, challenges: [action.challenge, ...state.challenges] };
+    case 'accept_challenge': {
+      return {
+        ...state,
+        challenges: state.challenges.map(c =>
+          c.id === action.id ? { ...c, status: 'accepted' as const, opponent_id: action.acceptor_id } : c
+        ),
+      };
+    }
+    case 'finish_challenge': {
+      const ch = state.challenges.find(c => c.id === action.id);
+      if (!ch) return state;
+      const stake = ch.stake_amount;
+      const winnerId = action.winner_id;
+      const loserId = winnerId === ch.creator_id ? ch.opponent_id : ch.creator_id;
+      return {
+        ...state,
+        challenges: state.challenges.map(c =>
+          c.id === action.id ? { ...c, status: 'finished' as const, winner_id: winnerId, result_data: action.result_data } : c
+        ),
+        participants: state.participants.map(p => {
+          if (winnerId && p.id === winnerId) return { ...p, balance: p.balance + stake, wins: p.wins + 1 };
+          if (loserId && p.id === loserId) return { ...p, balance: p.balance - stake, losses: p.losses + 1 };
+          return p;
+        }),
+      };
+    }
+    case 'cancel_challenge':
+      return {
+        ...state,
+        challenges: state.challenges.map(c =>
+          c.id === action.id ? { ...c, status: 'cancelled' as const } : c
+        ),
+      };
     default:
       return state;
   }

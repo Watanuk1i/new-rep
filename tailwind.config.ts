@@ -40,7 +40,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        heading: ["Cormorant Garamond", "Georgia", "serif"],
+        heading: ["Montserrat", "system-ui", "sans-serif"],
         body: ["Inter", "system-ui", "sans-serif"],
       },
       boxShadow: {

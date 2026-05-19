@@ -149,6 +149,7 @@ export function buildInitialState(): AppState {
         created_at: Date.now() - 1000 * 60 * 90,
       },
     ],
+    challenges: [],
     currentUserId: null,
   };
 }

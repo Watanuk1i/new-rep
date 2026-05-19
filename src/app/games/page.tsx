@@ -2,123 +2,147 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { cn } from '@/lib/utils';
+import { useStore } from '@/lib/store/StoreProvider';
+import { CharacterIcon } from '@/components/ui/CharacterIcon';
+import { Yen } from '@/components/ui/Yen';
+import { cn, uid, getStatusLabel } from '@/lib/utils';
+import type { GameChallenge, MiniGameType } from '@/lib/store/types';
 
-const GAME_TYPES = [
-  { key: 'dice', label: 'Кости', icon: '🎲', description: '2 кости, у кого больше — победил', players: 2, color: 'from-velvet to-card' },
-  { key: 'high_card', label: 'Старшая карта', icon: '🃏', description: 'Тянуть карту, старшая побеждает', players: 2, color: 'from-velvet-dark to-card' },
-  { key: 'roulette', label: 'Рулетка', icon: '🎰', description: 'Цвет, чёт/нечёт, число', players: 1, color: 'from-crimson-dark to-velvet-dark' },
-  { key: 'slots', label: 'Слоты', icon: '🍒', description: '3 барабана, комбинации', players: 1, color: 'from-amber-900/40 to-velvet' },
-  { key: 'blackjack', label: '21 очко', icon: '🂡', description: 'Набрать ближе к 21', players: 2, color: 'from-velvet to-velvet-dark' },
-  { key: 'bluff_duel', label: 'Блеф-дуэль', icon: '🎭', description: 'Утверждение + верю/не верю', players: 2, color: 'from-purple-900/40 to-velvet' },
-  { key: 'truth_or_bet', label: 'Правда или ставка', icon: '❓', description: 'Вопрос или повышение', players: 2, color: 'from-crimson-dark to-card' },
-];
-
-const mockChallenges = [
-  { id: '1', creator: 'Леон Кувата', game: 'dice', stake: 200 },
-  { id: '2', creator: 'Мондо Овада', game: 'high_card', stake: 300 },
-];
+const GAME_LABELS: Record<MiniGameType, { label: string; icon: string }> = {
+  dice: { label: 'Кости', icon: '🎲' },
+  high_card: { label: 'Старшая карта', icon: '🃏' },
+  roulette: { label: 'Рулетка', icon: '🎰' },
+  slots: { label: 'Слоты', icon: '🍒' },
+  blackjack: { label: '21 очко', icon: '🂡' },
+  bluff_duel: { label: 'Блеф-дуэль', icon: '🎭' },
+  truth_or_bet: { label: 'Правда или ставка', icon: '❓' },
+};
 
 export default function GamesPage() {
-  const [tab, setTab] = useState<'games' | 'challenges' | 'history'>('games');
+  const { state, currentUser, dispatch } = useStore();
+  const [tab, setTab] = useState<'games' | 'challenges' | 'my'>('challenges');
+
+  const pending = state.challenges.filter(c => c.status === 'pending');
+  const myChallenges = currentUser
+    ? state.challenges.filter(c => c.creator_id === currentUser.id || c.opponent_id === currentUser.id)
+    : [];
+
+  const accept = (ch: GameChallenge) => {
+    if (!currentUser) return;
+    dispatch({ type: 'accept_challenge', id: ch.id, acceptor_id: currentUser.id });
+    // Сразу переходим к игре
+    window.location.href = `/games/play/${ch.game_type}?challenge=${ch.id}`;
+  };
 
   return (
-    <div className="px-4 py-4 max-w-2xl lg:max-w-6xl mx-auto space-y-4">
-      {/* CTA */}
+    <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-4 animate-fade-in">
       <Link href="/games/create" className="block">
-        <div className="relative glass-card overflow-hidden gold-border p-4 active:scale-[0.98] transition-all">
-          <div className="absolute -top-10 -right-10 w-32 h-32 bg-gold/10 rounded-full blur-3xl" />
-          <div className="relative flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-gold flex items-center justify-center text-2xl shadow-glow">
-              ⚔️
-            </div>
+        <div className="relative glass-strong gold-border p-4 active:scale-[0.99] transition-transform">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-gold-light to-gold-dark flex items-center justify-center text-2xl">⚔️</div>
             <div className="flex-1">
-              <div className="font-heading font-bold text-base">Создать игру</div>
-              <div className="text-xs text-muted-foreground">Вызвать соперника или открытый вызов</div>
+              <div className="font-heading font-bold text-base">Создать вызов</div>
+              <div className="text-xs text-muted-foreground">Выбери игру, соперника и ставку</div>
             </div>
             <span className="text-gold/70">→</span>
           </div>
         </div>
       </Link>
 
-      {/* Tabs */}
       <div className="scroll-x">
         {[
-          { key: 'games', label: 'Игры', icon: '🎲' },
-          { key: 'challenges', label: `Вызовы · ${mockChallenges.length}`, icon: '⚔️' },
-          { key: 'history', label: 'История', icon: '📜' },
+          { key: 'challenges', label: `Вызовы · ${pending.length}`, icon: '⚔️' },
+          { key: 'games', label: 'Типы игр', icon: '🎲' },
+          { key: 'my', label: 'Мои', icon: '👤' },
         ].map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key as any)}
-            className={cn('tab-pill', tab === t.key ? 'tab-pill-active' : 'tab-pill-inactive')}
-          >
-            <span>{t.icon}</span>
-            <span>{t.label}</span>
+          <button key={t.key} onClick={() => setTab(t.key as any)} className={cn('tab-pill', tab === t.key ? 'tab-pill-active' : 'tab-pill-inactive')}>
+            <span>{t.icon}</span><span>{t.label}</span>
           </button>
         ))}
       </div>
 
-      {tab === 'games' && (
-        <section>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {GAME_TYPES.map(game => (
-              <Link key={game.key} href={`/games/play/${game.key}`}>
-                <div className={cn(
-                  'relative bg-gradient-to-br rounded-2xl p-4 border border-white/5 active:scale-95 transition-all overflow-hidden h-full',
-                  game.color
-                )}>
-                  <div className="absolute -bottom-4 -right-4 text-6xl opacity-15">{game.icon}</div>
-                  <div className="relative">
-                    <div className="text-3xl mb-2">{game.icon}</div>
-                    <h3 className="font-bold text-sm leading-tight">{game.label}</h3>
-                    <p className="text-[10px] text-muted-foreground mt-1 leading-snug">{game.description}</p>
-                    <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/30 text-[9px] uppercase tracking-wider text-muted-foreground">
-                      {game.players === 1 ? 'Соло' : 'Дуэль'}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
       {tab === 'challenges' && (
-        <section className="space-y-2">
-          {mockChallenges.length === 0 ? (
-            <div className="glass-card p-6 text-center">
+        <div className="space-y-2">
+          {pending.length === 0 ? (
+            <div className="glass p-6 text-center">
               <div className="text-3xl mb-2 opacity-30">⚔️</div>
-              <p className="text-sm text-muted-foreground">Открытых вызовов нет.</p>
+              <p className="text-sm text-muted-foreground">Нет открытых вызовов.</p>
+              <Link href="/games/create" className="text-xs text-gold mt-2 inline-block">Создать первый →</Link>
             </div>
-          ) : (
-            mockChallenges.map(ch => {
-              const game = GAME_TYPES.find(g => g.key === ch.game);
-              return (
-                <div key={ch.id} className="glass-card p-3 flex items-center gap-3">
-                  <div className="text-2xl">{game?.icon}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-sm truncate">{ch.creator}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {game?.label} · <span className="text-gold font-mono">{ch.stake}</span> очк.
-                    </div>
+          ) : pending.map(ch => {
+            const creator = state.participants.find(p => p.id === ch.creator_id);
+            const gl = GAME_LABELS[ch.game_type];
+            const isOwn = currentUser?.id === ch.creator_id;
+            return (
+              <div key={ch.id} className="glass p-3 flex items-center gap-3">
+                {creator && <CharacterIcon participant={creator} size="md" />}
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm truncate">{creator?.display_name || '—'}</div>
+                  <div className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span>{gl.icon}</span><span>{gl.label}</span>
+                    <span className="mx-1">·</span>
+                    <Yen amount={ch.stake_amount} className="text-gold" iconClass="w-3 h-3" />
                   </div>
-                  <button className="btn-primary text-xs px-4" style={{ minHeight: '40px' }}>Принять</button>
                 </div>
-              );
-            })
-          )}
-        </section>
+                {!isOwn && currentUser ? (
+                  <button onClick={() => accept(ch)} className="btn-primary text-xs px-4" style={{ minHeight: 40 }}>Принять</button>
+                ) : isOwn ? (
+                  <button onClick={() => dispatch({ type: 'cancel_challenge', id: ch.id })} className="btn-secondary text-xs px-3" style={{ minHeight: 40 }}>Отменить</button>
+                ) : (
+                  <Link href="/login" className="btn-secondary text-xs px-3" style={{ minHeight: 40 }}>Войти</Link>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      {tab === 'history' && (
-        <section>
-          <div className="glass-card p-6 text-center">
-            <div className="text-3xl mb-2 opacity-30">📜</div>
-            <p className="text-sm text-muted-foreground">История игр пока пуста.</p>
-            <p className="text-[10px] text-muted mt-1">Сыграйте первую партию!</p>
-          </div>
-        </section>
+      {tab === 'games' && (
+        <div className="grid grid-cols-2 gap-3">
+          {(Object.entries(GAME_LABELS) as [MiniGameType, { label: string; icon: string }][]).map(([key, { label, icon }]) => (
+            <Link key={key} href={`/games/play/${key}`}>
+              <div className="glass p-4 text-center active:scale-95 transition-transform">
+                <div className="text-3xl mb-2">{icon}</div>
+                <div className="font-bold text-sm">{label}</div>
+                <div className="text-[10px] text-muted-foreground mt-1">Играть →</div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {tab === 'my' && (
+        <div className="space-y-2">
+          {myChallenges.length === 0 ? (
+            <div className="glass p-6 text-center">
+              <p className="text-sm text-muted-foreground">У вас ещё нет игр.</p>
+            </div>
+          ) : myChallenges.map(ch => {
+            const gl = GAME_LABELS[ch.game_type];
+            const opp = state.participants.find(p => p.id === (ch.creator_id === currentUser?.id ? ch.opponent_id : ch.creator_id));
+            return (
+              <div key={ch.id} className={cn('glass p-3', ch.status === 'finished' && (ch.winner_id === currentUser?.id ? 'gold-border' : 'crimson-border'))}>
+                <div className="flex items-center gap-2 text-sm">
+                  <span>{gl.icon}</span>
+                  <span className="font-bold">{gl.label}</span>
+                  <span className="text-muted">vs</span>
+                  <span className="font-bold truncate">{opp?.display_name || 'Открытый'}</span>
+                </div>
+                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                  <Yen amount={ch.stake_amount} className="text-gold" iconClass="w-3 h-3" />
+                  <span className={cn(
+                    ch.status === 'finished' ? (ch.winner_id === currentUser?.id ? 'text-emerald-400' : 'text-red-400') : 'text-muted'
+                  )}>
+                    {ch.status === 'pending' && 'Ожидание'}
+                    {ch.status === 'accepted' && 'В процессе'}
+                    {ch.status === 'finished' && (ch.winner_id === currentUser?.id ? '✓ Победа' : '✗ Проигрыш')}
+                    {ch.status === 'cancelled' && 'Отменено'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
