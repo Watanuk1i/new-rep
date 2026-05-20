@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS participants (
   pet_owner_id TEXT REFERENCES participants(id) ON DELETE SET NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   password TEXT, -- простой пароль (mock auth)
+  is_registered BOOLEAN NOT NULL DEFAULT FALSE, -- true если кто-то уже занял этого персонажа
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -200,9 +201,9 @@ BEGIN
 END $$;
 
 -- ========== SEED 16 участников ==========
-INSERT INTO participants (id, display_name, status, balance, reputation, sprite_sheet, sprite_y, password) VALUES
-  ('p-gm', 'Монокума', 'gm', 999999999, 100, NULL, NULL, 'host_academy_2026'),
-  ('p-queen', 'Селестия Люденберг', 'queen', 9500000, 95, 1, 0, 'queen_celestia_2026'),
+INSERT INTO participants (id, display_name, status, balance, reputation, sprite_sheet, sprite_y, password, is_registered) VALUES
+  ('p-gm', 'Монокума', 'gm', 999999999, 100, NULL, NULL, 'host_academy_2026', TRUE),
+  ('p-queen', 'Селестия Люденберг', 'queen', 9500000, 95, 1, 0, 'queen_celestia_2026', TRUE),
   ('p-1', 'Макото Наэги', 'player', 1000000, 60, 1, 86, NULL),
   ('p-2', 'Кёко Киригири', 'player', 1500000, 70, 2, 86, NULL),
   ('p-3', 'Бьякуя Тогами', 'player', 2000000, 80, 3, 86, NULL),

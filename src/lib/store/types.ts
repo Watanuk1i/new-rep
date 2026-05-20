@@ -20,6 +20,7 @@ export interface Participant {
   pet_owner_id?: string | null;
   is_active: boolean;
   password?: string | null;
+  is_registered?: boolean;
   created_at?: string;
 }
 

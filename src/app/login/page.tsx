@@ -18,7 +18,7 @@ export default function LoginPage() {
   const [selectedCharId, setSelectedCharId] = useState('');
   const sb = getSupabase();
 
-  const players = state.participants.filter(p => p.status === 'player');
+  const players = state.participants.filter(p => p.status === 'player' && !p.password);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -38,9 +38,9 @@ export default function LoginPage() {
       return;
     }
     setBusy(true);
-    // Назначаем пароль на выбранного persistent участника
+    // Назначаем пароль на выбранного persistent участника + помечаем registered
     const { error } = await sb.from('participants')
-      .update({ password, display_name: username.trim() }).eq('id', selectedCharId);
+      .update({ password, display_name: username.trim(), is_registered: true }).eq('id', selectedCharId);
     setBusy(false);
     if (error) { setError(error.message); return; }
     const ok = await login(username.trim(), password);
@@ -100,7 +100,7 @@ export default function LoginPage() {
               <option value="">— выберите —</option>
               {players.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
             </select>
-            <p className="text-[10px] text-muted mt-1">При регистрации выбранному персонажу присваивается ваш ник и пароль.</p>
+            <p className="text-[10px] text-muted mt-1">Только незанятые персонажи. После регистрации другие не смогут выбрать вашего.</p>
           </div>
           {error && <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{error}</div>}
           <button type="submit" disabled={busy} className="btn-primary w-full">{busy ? 'Регистрация...' : 'Зарегистрироваться'}</button>
