@@ -29,8 +29,9 @@ export default function ParticipantsPage() {
 
   const all = state.participants.filter(p => p.status !== 'gm');
   const queen = all.find(p => p.status === 'queen');
+
   const list = useMemo(() => {
-    let arr = all.filter(p => p.status !== 'queen'); // отдельно показываем
+    let arr = all.filter(p => p.status !== 'queen');
     if (filter !== 'all') arr = arr.filter(p => p.status === filter);
     return arr.sort((a, b) => {
       if (sortBy === 'balance') return b.balance - a.balance;
@@ -41,11 +42,11 @@ export default function ParticipantsPage() {
   }, [all, filter, sortBy]);
 
   return (
-    <div className="px-3 sm:px-4 py-4 max-w-2xl lg:max-w-none mx-auto space-y-4 animate-fade-in">
+    <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-4 animate-fade-in">
       {queen && (
         <div className="glass-strong gold-border p-4 flex items-center gap-3">
           <div className="text-3xl">👑</div>
-          <CharacterIcon participant={queen} size="lg" />
+          <CharacterIcon participant={queen} size="lg" ringless />
           <div className="flex-1 min-w-0">
             <div className="text-[10px] uppercase tracking-widest text-gold/70">Президент Академии</div>
             <h2 className="font-heading text-lg font-bold text-gradient-gold leading-tight truncate">{queen.display_name}</h2>
@@ -56,71 +57,37 @@ export default function ParticipantsPage() {
 
       <div className="scroll-x">
         {FILTERS.map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={cn('tab-pill', filter === f.key ? 'tab-pill-active' : 'tab-pill-inactive')}
-          >
-            <span>{f.icon}</span>
-            <span>{f.label}</span>
+          <button key={f.key} onClick={() => setFilter(f.key)}
+            className={cn('tab-pill', filter === f.key ? 'tab-pill-active' : 'tab-pill-inactive')}>
+            <span>{f.icon}</span><span>{f.label}</span>
           </button>
         ))}
       </div>
 
       <div className="flex items-center gap-2">
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          className="input-field flex-1 py-2 text-xs"
-          style={{ minHeight: 40 }}
-        >
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+          className="input-field flex-1 py-2 text-xs" style={{ minHeight: 40 }}>
           {SORTS.map(s => <option key={s.key} value={s.key}>Сортировка: {s.label}</option>)}
         </select>
         <div className="flex bg-card/60 border border-white/8 rounded-xl p-1">
-          <button
-            onClick={() => setView('list')}
-            className={cn('p-2 rounded-lg', view === 'list' ? 'bg-gold/15 text-gold' : 'text-muted')}
-            aria-label="Список"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-          </button>
-          <button
-            onClick={() => setView('grid')}
-            className={cn('p-2 rounded-lg', view === 'grid' ? 'bg-gold/15 text-gold' : 'text-muted')}
-            aria-label="Сетка"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" />
-              <rect x="14" y="3" width="7" height="7" />
-              <rect x="14" y="14" width="7" height="7" />
-              <rect x="3" y="14" width="7" height="7" />
-            </svg>
-          </button>
+          <button onClick={() => setView('list')}
+            className={cn('p-2 rounded-lg', view === 'list' ? 'bg-gold/15 text-gold' : 'text-muted')}>☰</button>
+          <button onClick={() => setView('grid')}
+            className={cn('p-2 rounded-lg', view === 'grid' ? 'bg-gold/15 text-gold' : 'text-muted')}>▦</button>
         </div>
       </div>
 
       <div className="text-xs text-muted px-1">{list.length} участников</div>
 
       {view === 'list' ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {list.map((p, i) => (
-            <ParticipantCard
-              key={p.id}
-              participant={p}
-              variant="list"
-              rank={sortBy === 'balance' ? i + 1 : undefined}
-            />
+            <ParticipantCard key={p.id} participant={p} variant="list"
+              rank={sortBy === 'balance' ? i + 1 : undefined} />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {list.map(p => <ParticipantCard key={p.id} participant={p} variant="grid" />)}
         </div>
       )}

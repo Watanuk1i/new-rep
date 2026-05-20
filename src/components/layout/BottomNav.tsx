@@ -15,13 +15,10 @@ const ITEMS = [
 
 export function BottomNav() {
   const pathname = usePathname();
-  const { state, role } = useStore();
+  const { state } = useStore();
 
-  // Счётчик новых событий (упрощённо — все события за последние 30 мин)
-  const newEvents = state.events.filter(e => {
-    if (e.is_for_gm_only && role !== 'gm' && role !== 'queen') return false;
-    return Date.now() - e.created_at < 1000 * 60 * 30;
-  }).length;
+  // Количество непрочитанных уведомлений
+  const newCount = state.notifications.filter(n => !n.is_read).length;
 
   return (
     <nav className="bottom-nav fixed bottom-0 left-0 right-0 z-40 lg:hidden">
@@ -31,7 +28,7 @@ export function BottomNav() {
           {ITEMS.map(item => {
             const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
             const Icon = item.Icon;
-            const showBadge = item.href === '/notifications' && newEvents > 0;
+            const showBadge = item.href === '/notifications' && newCount > 0;
             return (
               <Link
                 key={item.href}

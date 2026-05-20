@@ -3,39 +3,33 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useStore } from '@/lib/store/StoreProvider';
+import { useStore, uid } from '@/lib/store/StoreProvider';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen, YenIcon } from '@/components/ui/Yen';
-import { cn, getStatusLabel, uid, SPRITE_SHEETS } from '@/lib/utils';
-import type { Participant, ParticipantStatus, PariMarket } from '@/lib/store/types';
+import { cn, getStatusLabel, SPRITE_SHEETS } from '@/lib/utils';
+import { getSupabase } from '@/lib/supabase/client';
+import type { Participant, ParticipantStatus, PariMarket, Debt, Rumor, ContentBlock } from '@/lib/store/types';
 
 export const dynamic = 'force-dynamic';
 
 const TABS = [
   { key: 'overview', label: 'Обзор', icon: '📊' },
-  { key: 'season', label: 'Сезон / День', icon: '📅' },
+  { key: 'season', label: 'Сезон/День', icon: '📅' },
+  { key: 'announce', label: 'Объявления', icon: '📢' },
   { key: 'participants', label: 'Игроки', icon: '👥' },
   { key: 'pari', label: 'Пари', icon: '💰' },
   { key: 'super-games', label: 'Супер игры', icon: '🏟️' },
-  { key: 'events', label: 'События', icon: '📡' },
+  { key: 'debts', label: 'Долги', icon: '📜' },
+  { key: 'rumors', label: 'Слухи', icon: '👁️' },
   { key: 'icons', label: 'Иконки', icon: '🎭' },
+  { key: 'content', label: 'Контент', icon: '📝' },
 ];
 
-// Обёртка, чтобы useSearchParams был внутри Suspense (требование Next.js 14)
 export default function AdminPage() {
   return (
-    <Suspense fallback={<AdminFallback />}>
+    <Suspense fallback={<div className="px-4 py-12 text-center text-muted-foreground">Загрузка...</div>}>
       <AdminInner />
     </Suspense>
-  );
-}
-
-function AdminFallback() {
-  return (
-    <div className="px-4 py-12 text-center max-w-md mx-auto">
-      <div className="text-3xl mb-2 opacity-30">⚙️</div>
-      <p className="text-sm text-muted-foreground">Загрузка панели...</p>
-    </div>
   );
 }
 
@@ -56,35 +50,29 @@ function AdminInner() {
       <div className="px-4 py-12 text-center max-w-md mx-auto">
         <div className="text-5xl mb-3">🔒</div>
         <h2 className="font-heading text-xl font-bold mb-2">Доступ запрещён</h2>
-        <p className="text-sm text-muted-foreground mb-4">Админка доступна только Ведущему и Селестии.</p>
+        <p className="text-sm text-muted-foreground mb-4">Только Ведущий и Селестия.</p>
         <Link href="/login" className="btn-primary inline-flex">Войти</Link>
       </div>
     );
   }
 
   return (
-    <div className="px-3 sm:px-4 py-4 max-w-2xl lg:max-w-none mx-auto space-y-4 animate-fade-in">
+    <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-4 animate-fade-in">
       <div className="glass-strong gold-border p-4 flex items-center gap-3">
         <div className="text-3xl">⚙️</div>
         <div>
           <div className="text-[10px] uppercase tracking-widest text-gold/70">Управление</div>
-          <h1 className="font-heading text-xl font-bold text-gradient-gold leading-tight">
-            Панель Ведущего
-          </h1>
+          <h1 className="font-heading text-xl font-bold text-gradient-gold leading-tight">Панель Ведущего</h1>
         </div>
       </div>
 
       <div className="scroll-x">
         {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => {
-              setTab(t.key);
-              router.replace(`/admin?tab=${t.key}`);
-              setEditingParticipant(null);
-            }}
-            className={cn('tab-pill', tab === t.key ? 'tab-pill-active' : 'tab-pill-inactive')}
-          >
+          <button key={t.key} onClick={() => {
+            setTab(t.key);
+            router.replace(`/admin?tab=${t.key}`);
+            setEditingParticipant(null);
+          }} className={cn('tab-pill', tab === t.key ? 'tab-pill-active' : 'tab-pill-inactive')}>
             <span>{t.icon}</span><span>{t.label}</span>
           </button>
         ))}
@@ -92,68 +80,44 @@ function AdminInner() {
 
       {tab === 'overview' && <Overview />}
       {tab === 'season' && <SeasonDay />}
-      {tab === 'participants' && (
-        editingParticipant
-          ? <EditParticipant id={editingParticipant} onBack={() => setEditingParticipant(null)} />
-          : <ParticipantsList onEdit={setEditingParticipant} />
-      )}
+      {tab === 'announce' && <AnnounceTab />}
+      {tab === 'participants' && (editingParticipant
+        ? <EditParticipant id={editingParticipant} onBack={() => setEditingParticipant(null)} />
+        : <ParticipantsList onEdit={setEditingParticipant} />)}
       {tab === 'pari' && <PariAdmin />}
       {tab === 'super-games' && <SuperGamesAdmin />}
-      {tab === 'events' && <EventsAdmin />}
-      {tab === 'icons' && (
-        editingParticipant
-          ? <IconEditor id={editingParticipant} onBack={() => setEditingParticipant(null)} />
-          : <IconsList onEdit={setEditingParticipant} />
-      )}
+      {tab === 'debts' && <DebtsAdmin />}
+      {tab === 'rumors' && <RumorsAdmin />}
+      {tab === 'icons' && (editingParticipant
+        ? <IconEditor id={editingParticipant} onBack={() => setEditingParticipant(null)} />
+        : <IconsList onEdit={setEditingParticipant} />)}
+      {tab === 'content' && <ContentAdmin />}
     </div>
   );
 }
 
 function Overview() {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const players = state.participants.filter(p => p.status !== 'gm');
   const totalBank = players.reduce((s, p) => s + p.balance, 0);
   const activePari = state.pari.filter(m => m.status === 'open' || m.status === 'awaiting_confirmation').length;
   const awaitingPari = state.pari.filter(m => m.status === 'awaiting_confirmation').length;
   const liveGames = state.superGames.filter(g => g.status === 'live').length;
+  const requestedDebts = state.debts.filter(d => d.status === 'requested').length;
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
         <Card label="Участников" value={players.length} icon="👥" />
         <Card label="Активных пари" value={activePari} icon="💰" />
-        <Card label="Ожидание решения" value={awaitingPari} icon="⏳" highlight={awaitingPari > 0} />
+        <Card label="Ожидание пари" value={awaitingPari} icon="⏳" highlight={awaitingPari > 0} />
         <Card label="Live игр" value={liveGames} icon="🔴" highlight={liveGames > 0} />
+        <Card label="Запросов долгов" value={requestedDebts} icon="📜" highlight={requestedDebts > 0} />
+        <Card label="Слухов" value={state.rumors.filter(r => r.status === 'active').length} icon="👁️" />
       </div>
-
       <div className="glass p-4">
         <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-2">Общий банк</div>
         <Yen amount={totalBank} full className="text-2xl text-gold" iconClass="w-6 h-6" />
-      </div>
-
-      <div className="glass p-4 space-y-2">
-        <div className="text-[10px] uppercase tracking-widest text-gold/70">Быстрые действия</div>
-        <button
-          onClick={() => {
-            if (confirm('Раздать всем игрокам случайный баланс от 100 000 до 10 000 000 ейнов?')) {
-              dispatch({ type: 'randomize_balances' });
-            }
-          }}
-          className="btn-outline w-full text-sm"
-        >
-          🎲 Раздать случайные балансы
-        </button>
-        <button
-          onClick={() => {
-            if (confirm('ВНИМАНИЕ! Это полностью сбросит состояние игры до начального. Продолжить?')) {
-              dispatch({ type: 'reset' });
-              alert('Состояние сброшено');
-            }
-          }}
-          className="w-full text-xs text-red-300 active:bg-red-500/10 rounded-xl py-3 border border-red-500/20"
-        >
-          ⚠️ Сбросить всё состояние
-        </button>
       </div>
     </div>
   );
@@ -170,46 +134,96 @@ function Card({ label, value, icon, highlight }: { label: string; value: number;
 }
 
 function SeasonDay() {
-  const { state, dispatch } = useStore();
+  const { state, notifyAllPlayers, addEvent } = useStore();
+  const sb = getSupabase();
+  const [season, setSeason] = useState(state.room.season);
+  const [day, setDay] = useState(state.room.day);
+
+  useEffect(() => {
+    setSeason(state.room.season);
+    setDay(state.room.day);
+  }, [state.room]);
+
+  const apply = async () => {
+    if (!sb) return;
+    const seasonChanged = season !== state.room.season;
+    const dayChanged = day !== state.room.day;
+    await sb.from('room_state').update({
+      season, day, updated_at: new Date().toISOString(),
+    }).eq('id', 'academy');
+    if (seasonChanged) {
+      await addEvent({ type: 'season_change', title: `Начало сезона ${season}`, body: 'Селестия объявляет начало нового сезона академии' });
+      await notifyAllPlayers({ type: 'season_change', title: `Сезон ${season}`, body: 'Начинается новый сезон академии', link_url: '/' });
+    }
+    if (dayChanged) {
+      await addEvent({ type: 'day_change', title: `День ${day}`, body: `Академия переходит к дню ${day}` });
+      await notifyAllPlayers({ type: 'day_change', title: `День ${day}`, body: 'Академия перешла к новому дню', link_url: '/' });
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="glass p-4 space-y-3">
         <div>
           <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-2 block">Сезон</label>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => dispatch({ type: 'set_season', season: state.season - 1 })}
-              className="btn-icon"
-            >−</button>
-            <div className="flex-1 text-center font-mono text-3xl font-bold text-gold">{state.season}</div>
-            <button
-              onClick={() => dispatch({ type: 'set_season', season: state.season + 1 })}
-              className="btn-icon"
-            >+</button>
-          </div>
+          <input type="number" min={1} max={99} value={season}
+            onChange={e => setSeason(Math.max(1, Math.min(99, Number(e.target.value))))}
+            className="input-field font-mono text-2xl text-center" />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-2 block">День</label>
+          <input type="number" min={1} max={99} value={day}
+            onChange={e => setDay(Math.max(1, Math.min(99, Number(e.target.value))))}
+            className="input-field font-mono text-2xl text-center" />
         </div>
       </div>
+      <button onClick={apply} className="btn-primary w-full">💾 Применить (с уведомлением всем)</button>
+    </div>
+  );
+}
 
-      <div className="glass p-4 space-y-3">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-2 block">День (1—5)</label>
-        <div className="grid grid-cols-5 gap-1.5">
-          {[1, 2, 3, 4, 5].map(d => (
-            <button
-              key={d}
-              onClick={() => dispatch({ type: 'set_day', day: d })}
-              className={cn(
-                'py-4 rounded-xl text-base font-bold border active:scale-95',
-                state.day === d ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/40 border-white/8'
-              )}
-            >
-              Д{d}
-            </button>
-          ))}
-        </div>
-        <p className="text-[10px] text-muted">
-          Изменение дня автоматически закрывает пари с соответствующим сроком.
-        </p>
-      </div>
+function AnnounceTab() {
+  const { notifyAllPlayers, addEvent } = useStore();
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [type, setType] = useState('queen_announcement');
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    if (!title.trim()) return;
+    setBusy(true);
+    await addEvent({
+      type, title: title.trim(),
+      body: body.trim() || undefined,
+      link_url: '/notifications',
+    });
+    await notifyAllPlayers({
+      type, title: title.trim(),
+      body: body.trim() || undefined,
+      link_url: '/',
+    });
+    setTitle(''); setBody('');
+    setBusy(false);
+  };
+
+  return (
+    <div className="glass p-4 space-y-3">
+      <div className="text-[10px] uppercase tracking-widest text-gold/70">📢 Создать объявление</div>
+      <select value={type} onChange={e => setType(e.target.value)} className="input-field">
+        <option value="queen_announcement">👑 Объявление Селестии</option>
+        <option value="big_game_start">🏟️ Большая игра</option>
+        <option value="custom">📢 Прочее</option>
+      </select>
+      <input value={title} onChange={e => setTitle(e.target.value)}
+        placeholder="Заголовок (например: Открытие сезона)" className="input-field" />
+      <textarea value={body} onChange={e => setBody(e.target.value)}
+        placeholder="Текст объявления" className="input-field min-h-[80px] resize-none" />
+      <button onClick={send} disabled={!title.trim() || busy} className="btn-primary w-full">
+        {busy ? '...' : '📤 Опубликовать всем'}
+      </button>
+      <p className="text-[10px] text-muted">
+        Объявление появится в «События академии» на главной + придёт уведомление каждому игроку.
+      </p>
     </div>
   );
 }
@@ -220,12 +234,9 @@ function ParticipantsList({ onEdit }: { onEdit: (id: string) => void }) {
   return (
     <div className="space-y-2">
       {list.map(p => (
-        <button
-          key={p.id}
-          onClick={() => onEdit(p.id)}
-          className="glass p-3 w-full flex items-center gap-3 text-left active:scale-[0.99]"
-        >
-          <CharacterIcon participant={p} size="md" />
+        <button key={p.id} onClick={() => onEdit(p.id)}
+          className="glass p-3 w-full flex items-center gap-3 text-left active:scale-[0.99]">
+          <CharacterIcon participant={p} size="md" ringless={p.status === 'queen'} />
           <div className="flex-1 min-w-0">
             <div className="font-bold text-sm truncate">{p.display_name}</div>
             <div className="text-[10px] text-muted-foreground">{getStatusLabel(p.status)}</div>
@@ -238,7 +249,8 @@ function ParticipantsList({ onEdit }: { onEdit: (id: string) => void }) {
 }
 
 function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
+  const sb = getSupabase();
   const p = state.participants.find(x => x.id === id);
   const [balance, setBalance] = useState(p?.balance || 0);
   const [status, setStatus] = useState<ParticipantStatus>(p?.status || 'player');
@@ -248,38 +260,28 @@ function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
   if (!p) return null;
   const others = state.participants.filter(x => x.status !== 'gm' && x.id !== id);
 
-  const save = () => {
-    dispatch({
-      type: 'update_participant',
-      id,
-      patch: {
-        balance,
-        status,
-        reputation,
-        pet_owner_id: status === 'pet' ? ownerId || null : null,
-      },
-    });
+  const save = async () => {
+    if (!sb) return;
+    await sb.from('participants').update({
+      balance, status, reputation,
+      pet_owner_id: status === 'pet' ? (ownerId || null) : null,
+    }).eq('id', id);
     onBack();
   };
 
-  const remove = () => {
-    if (confirm(`Точно удалить ${p.display_name} из игры и базы данных?`)) {
-      dispatch({ type: 'remove_participant', id });
+  const remove = async () => {
+    if (!sb) return;
+    if (confirm(`Точно удалить ${p.display_name} из игры?`)) {
+      await sb.from('participants').delete().eq('id', id);
       onBack();
     }
   };
 
   return (
     <div className="space-y-3">
-      <button onClick={onBack} className="text-xs text-gold flex items-center gap-1">
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-        К списку участников
-      </button>
-
+      <button onClick={onBack} className="text-xs text-gold flex items-center gap-1">← К списку</button>
       <div className="glass-strong p-4 flex items-center gap-3">
-        <CharacterIcon participant={p} size="lg" />
+        <CharacterIcon participant={p} size="lg" ringless={p.status === 'queen'} />
         <div>
           <div className="font-bold text-base">{p.display_name}</div>
           <div className="text-[10px] text-muted-foreground">{p.id}</div>
@@ -287,23 +289,18 @@ function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
       </div>
 
       <div className="glass p-4">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">Баланс (ейны)</label>
+        <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">Баланс</label>
         <div className="flex items-center gap-2">
           <YenIcon className="w-5 h-5" />
-          <input
-            type="number"
-            value={balance}
-            onChange={e => setBalance(Math.max(0, Number(e.target.value)))}
-            className="input-field font-mono"
-          />
+          <input type="number" value={balance} onChange={e => setBalance(Math.max(0, Number(e.target.value)))}
+            className="input-field font-mono" />
         </div>
         <div className="grid grid-cols-4 gap-1.5 mt-2">
           {[100_000, 500_000, 1_000_000, 5_000_000].map(v => (
-            <button
-              key={v}
-              onClick={() => setBalance(v)}
-              className="px-2 py-2 text-[11px] rounded-lg bg-card/60 border border-white/8 active:bg-white/5 font-mono"
-            >+{v >= 1e6 ? `${v / 1e6}M` : `${v / 1000}K`}</button>
+            <button key={v} onClick={() => setBalance(v)}
+              className="px-2 py-2 text-[11px] rounded-lg bg-card/60 border border-white/8 active:bg-white/5 font-mono">
+              {v >= 1e6 ? `${v / 1e6}M` : `${v / 1000}K`}
+            </button>
           ))}
         </div>
       </div>
@@ -317,22 +314,20 @@ function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
             { v: 'master', label: 'Хозяин' },
             { v: 'elite', label: 'Элита' },
             { v: 'queen', label: 'Королева' },
+            { v: 'collector', label: 'Коллектор' },
           ].map(s => (
-            <button
-              key={s.v}
-              onClick={() => setStatus(s.v as ParticipantStatus)}
-              className={cn(
-                'py-2.5 rounded-xl text-sm font-bold border active:scale-95',
-                status === s.v ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/40 border-white/8'
-              )}
-            >{s.label}</button>
+            <button key={s.v} onClick={() => setStatus(s.v as ParticipantStatus)}
+              className={cn('py-2.5 rounded-xl text-sm font-bold border active:scale-95',
+                status === s.v ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/40 border-white/8')}>
+              {s.label}
+            </button>
           ))}
         </div>
         {status === 'pet' && (
           <div className="mt-3">
             <label className="text-[10px] uppercase tracking-widest text-muted mb-1 block">Хозяин</label>
             <select value={ownerId} onChange={e => setOwnerId(e.target.value)} className="input-field">
-              <option value="">— выберите хозяина —</option>
+              <option value="">— выберите —</option>
               {others.map(o => <option key={o.id} value={o.id}>{o.display_name}</option>)}
             </select>
           </div>
@@ -341,17 +336,10 @@ function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
 
       <div className="glass p-4">
         <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 flex items-center justify-between">
-          <span>Репутация</span>
-          <span className="font-mono text-sm normal-case">{reputation}/100</span>
+          <span>Репутация</span><span className="font-mono text-sm normal-case">{reputation}/100</span>
         </label>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={reputation}
-          onChange={e => setReputation(Number(e.target.value))}
-          className="w-full accent-gold"
-        />
+        <input type="range" min={0} max={100} value={reputation}
+          onChange={e => setReputation(Number(e.target.value))} className="w-full accent-gold" />
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -363,9 +351,66 @@ function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
 }
 
 function PariAdmin() {
-  const { state, dispatch } = useStore();
+  const { state, notifyAllPlayers } = useStore();
+  const sb = getSupabase();
   const awaiting = state.pari.filter(m => m.status === 'awaiting_confirmation');
   const open = state.pari.filter(m => m.status === 'open');
+
+  const resolvePari = async (m: PariMarket, optionId: string) => {
+    if (!sb) return;
+    if (!confirm(`Утвердить «${m.options.find(o => o.id === optionId)?.label}» как победный вариант?`)) return;
+    const totalPool = (m.bets || []).reduce((s, b) => s + b.amount, 0);
+    const commission = Math.floor(totalPool * m.commission_pct / 100);
+    const payoutPool = totalPool - commission;
+    const winners = (m.bets || []).filter(b => b.option_id === optionId);
+    const winningTotal = winners.reduce((s, b) => s + b.amount, 0);
+
+    // Комиссия создателю
+    const creator = state.participants.find(p => p.id === m.creator_id);
+    if (creator && commission > 0) {
+      await sb.from('participants').update({ balance: creator.balance + commission }).eq('id', creator.id);
+    }
+    // Победителям выплата
+    if (winningTotal > 0) {
+      for (const w of winners) {
+        const payout = Math.floor((w.amount / winningTotal) * payoutPool);
+        const part = state.participants.find(p => p.id === w.participant_id);
+        if (part) {
+          await sb.from('participants').update({ balance: part.balance + payout }).eq('id', part.id);
+          await sb.from('notifications').insert({
+            id: uid('n'), recipient_id: part.id, type: 'bet_won',
+            title: 'Ваша ставка выиграла!',
+            body: `+${payout.toLocaleString('ru-RU')} ейнов · ${m.title}`,
+            link_url: '/pari', is_read: false,
+          });
+        }
+      }
+    }
+    // Уведомления проигравшим
+    const losers = (m.bets || []).filter(b => b.option_id !== optionId);
+    for (const l of losers) {
+      await sb.from('notifications').insert({
+        id: uid('n'), recipient_id: l.participant_id, type: 'bet_lost',
+        title: 'Ваша ставка проиграла',
+        body: m.title, link_url: '/pari', is_read: false,
+      });
+    }
+    await sb.from('pari').update({ status: 'resolved', resolved_option_id: optionId }).eq('id', m.id);
+    await sb.from('events').insert({
+      id: uid('ev'), type: 'pari_resolved',
+      title: `Пари решено: ${m.title}`, link_url: '/pari', is_for_gm_only: false,
+    });
+  };
+
+  const cancelPari = async (m: PariMarket) => {
+    if (!sb) return;
+    if (!confirm('Отменить и вернуть все ставки?')) return;
+    for (const b of (m.bets || [])) {
+      const part = state.participants.find(p => p.id === b.participant_id);
+      if (part) await sb.from('participants').update({ balance: part.balance + b.amount }).eq('id', part.id);
+    }
+    await sb.from('pari').update({ status: 'cancelled' }).eq('id', m.id);
+  };
 
   return (
     <div className="space-y-4">
@@ -373,11 +418,31 @@ function PariAdmin() {
         <section>
           <div className="text-[10px] font-bold uppercase tracking-widest text-amber-300 mb-2">⏳ Ожидают решения</div>
           <div className="space-y-2">
-            {awaiting.map(m => <PariResolveCard key={m.id} market={m} />)}
+            {awaiting.map(m => (
+              <div key={m.id} className="glass-strong gold-border p-4">
+                <div className="font-bold text-sm mb-2">{m.title}</div>
+                <div className="text-[10px] text-muted mb-3">
+                  Пул: {(m.bets || []).reduce((s, b) => s + b.amount, 0)} · Комиссия: {m.commission_pct}%
+                </div>
+                <div className="space-y-1.5">
+                  {m.options.map(opt => (
+                    <button key={opt.id} onClick={() => resolvePari(m, opt.id)}
+                      className={cn('w-full p-2.5 rounded-xl border text-sm font-bold',
+                        opt.kind === 'yes' ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' :
+                        opt.kind === 'no' ? 'bg-red-500/10 border-red-500/40 text-red-300' :
+                        'bg-card/40 border-white/8')}>
+                      {opt.kind === 'yes' && '✓ '}{opt.kind === 'no' && '✗ '}{opt.label}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => cancelPari(m)} className="text-xs text-red-300 mt-3 w-full">
+                  ⚠️ Отменить пари
+                </button>
+              </div>
+            ))}
           </div>
         </section>
       )}
-
       {open.length > 0 && (
         <section>
           <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-300 mb-2">🟢 Открытые</div>
@@ -386,111 +451,73 @@ function PariAdmin() {
               <div key={m.id} className="glass p-3">
                 <div className="font-bold text-sm">{m.title}</div>
                 <div className="text-[10px] text-muted-foreground mt-1">
-                  Закрытие: День {m.closes_on_day} · Комиссия {m.commission_pct}% · Пул: {m.bets.reduce((s, b) => s + b.amount, 0)}
+                  Закрытие: День {m.closes_on_day} · Пул: {(m.bets || []).reduce((s, b) => s + b.amount, 0)}
                 </div>
                 <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={() => {
-                      if (confirm('Перевести в «Ожидание подтверждения»?')) {
-                        dispatch({ type: 'update_pari', id: m.id, patch: { status: 'awaiting_confirmation' } });
-                      }
-                    }}
-                    className="btn-secondary text-xs flex-1"
-                  >→ Закрыть приём</button>
-                  <button
-                    onClick={() => {
-                      if (confirm('Отменить пари и вернуть все ставки?')) {
-                        dispatch({ type: 'cancel_pari', market_id: m.id });
-                      }
-                    }}
-                    className="btn-danger text-xs flex-1"
-                  >✕ Отменить</button>
+                  <button onClick={() => sb && sb.from('pari').update({ status: 'awaiting_confirmation' }).eq('id', m.id)}
+                    className="btn-secondary text-xs flex-1">→ Закрыть приём</button>
+                  <button onClick={() => cancelPari(m)} className="btn-danger text-xs flex-1">✕ Отменить</button>
                 </div>
               </div>
             ))}
           </div>
         </section>
       )}
-
       {awaiting.length === 0 && open.length === 0 && (
-        <div className="glass p-6 text-center">
-          <p className="text-sm text-muted-foreground">Активных пари нет.</p>
-        </div>
+        <div className="glass p-6 text-center text-sm text-muted-foreground">Активных пари нет.</div>
       )}
     </div>
   );
 }
 
-function PariResolveCard({ market }: { market: PariMarket }) {
-  const { dispatch } = useStore();
-  return (
-    <div className="glass-strong gold-border p-4">
-      <div className="font-bold text-sm mb-1">{market.title}</div>
-      <div className="text-[10px] text-muted-foreground mb-3">
-        Пул: {market.bets.reduce((s, b) => s + b.amount, 0)} · Комиссия: {market.commission_pct}%
-      </div>
-      <div className="text-[10px] uppercase tracking-widest text-gold mb-2">Выберите победителя</div>
-      <div className="space-y-1.5">
-        {market.options.map(opt => (
-          <button
-            key={opt.id}
-            onClick={() => {
-              if (confirm(`Утвердить «${opt.label}» как победный вариант?`)) {
-                dispatch({ type: 'resolve_pari', market_id: market.id, option_id: opt.id });
-              }
-            }}
-            className={cn(
-              'w-full p-2.5 rounded-xl border text-sm font-bold active:scale-95',
-              opt.kind === 'yes' ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' :
-              opt.kind === 'no' ? 'bg-red-500/10 border-red-500/40 text-red-300' :
-              'bg-card/40 border-white/8'
-            )}
-          >
-            {opt.kind === 'yes' && '✓ '}{opt.kind === 'no' && '✗ '}{opt.label}
-          </button>
-        ))}
-      </div>
-      <button
-        onClick={() => {
-          if (confirm('Отменить пари и вернуть все ставки?')) {
-            dispatch({ type: 'cancel_pari', market_id: market.id });
-          }
-        }}
-        className="text-xs text-red-300 active:text-red-400 mt-3 w-full"
-      >
-        ⚠️ Отменить пари (вернуть ставки)
-      </button>
-    </div>
-  );
-}
-
 function SuperGamesAdmin() {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
+  const sb = getSupabase();
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [type, setType] = useState('minority_rule');
   const [description, setDescription] = useState('');
   const [rules, setRules] = useState('');
   const [stakes, setStakes] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const others = state.participants.filter(p => p.status !== 'gm');
 
-  const create = () => {
-    if (!title.trim()) return;
-    dispatch({
-      type: 'add_super_game',
-      game: {
-        id: uid('sg'),
-        title: title.trim(),
-        type,
-        description: description.trim() || undefined,
-        rules: rules.trim() || undefined,
-        stakes: stakes.trim() || undefined,
-        status: 'scheduled',
-        participant_ids: [],
-        spectator_bets_enabled: true,
-      },
+  const create = async () => {
+    if (!sb || !title.trim()) return;
+    const id = uid('sg');
+    const ids = Array.from(selected);
+    await sb.from('super_games').insert({
+      id, title: title.trim(), type,
+      description: description.trim() || null,
+      rules: rules.trim() || null,
+      stakes: stakes.trim() || null,
+      status: 'scheduled',
+      participant_ids: ids,
+      spectator_bets_enabled: true,
     });
-    setTitle(''); setDescription(''); setRules(''); setStakes('');
+    // Уведомление участникам
+    if (ids.length > 0) {
+      await sb.from('notifications').insert(ids.map(pid => ({
+        id: uid('n'), recipient_id: pid, type: 'big_game_invite',
+        title: 'Вас пригласили в Большую игру',
+        body: title.trim(),
+        link_url: `/super-games/${id}`,
+        is_read: false,
+      })));
+    }
+    await sb.from('events').insert({
+      id: uid('ev'), type: 'big_game_start',
+      title: `Запланирована: ${title.trim()}`,
+      link_url: `/super-games/${id}`, is_for_gm_only: false,
+    });
+    setTitle(''); setDescription(''); setRules(''); setStakes(''); setSelected(new Set());
     setCreating(false);
+  };
+
+  const togglePart = (pid: string) => {
+    const next = new Set(selected);
+    if (next.has(pid)) next.delete(pid); else next.add(pid);
+    setSelected(next);
   };
 
   return (
@@ -510,10 +537,32 @@ function SuperGamesAdmin() {
             <option value="emperor">Император, гражданин, раб</option>
             <option value="custom">Своя</option>
           </select>
-          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Описание" className="input-field" />
-          <textarea value={rules} onChange={e => setRules(e.target.value)} placeholder="Правила" className="input-field min-h-[80px] resize-none" />
-          <input value={stakes} onChange={e => setStakes(e.target.value)} placeholder="Ставки" className="input-field" />
-          <button onClick={create} disabled={!title.trim()} className="btn-primary w-full">Создать</button>
+          <input value={description} onChange={e => setDescription(e.target.value)}
+            placeholder="Описание" className="input-field" />
+          <textarea value={rules} onChange={e => setRules(e.target.value)}
+            placeholder="Правила" className="input-field min-h-[80px] resize-none" />
+          <input value={stakes} onChange={e => setStakes(e.target.value)}
+            placeholder="Ставки" className="input-field" />
+
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
+              Пригласить участников ({selected.size})
+            </label>
+            <div className="max-h-48 overflow-y-auto space-y-1 glass p-2">
+              {others.map(p => (
+                <label key={p.id} className="flex items-center gap-2 p-1.5 rounded-lg cursor-pointer active:bg-white/5">
+                  <input type="checkbox" checked={selected.has(p.id)}
+                    onChange={() => togglePart(p.id)} className="w-4 h-4 accent-gold" />
+                  <CharacterIcon participant={p} size="xs" ringless />
+                  <span className="text-sm">{p.display_name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <button onClick={create} disabled={!title.trim()} className="btn-primary w-full">
+            Создать (с уведомлением приглашённым)
+          </button>
         </div>
       )}
 
@@ -523,7 +572,9 @@ function SuperGamesAdmin() {
             <div className="flex items-center justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-sm truncate">{g.title}</div>
-                <div className="text-[10px] text-muted-foreground">{getStatusLabel(g.status)} · {g.participant_ids.length} участн.</div>
+                <div className="text-[10px] text-muted-foreground">
+                  {g.status} · {(g.participant_ids || []).length} участн.
+                </div>
               </div>
               <span className="text-gold text-xs">→</span>
             </div>
@@ -534,59 +585,94 @@ function SuperGamesAdmin() {
   );
 }
 
-function EventsAdmin() {
-  const { state, dispatch } = useStore();
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [type, setType] = useState<string>('queen_announcement');
-
-  const send = () => {
-    if (!title.trim()) return;
-    dispatch({
-      type: 'add_event',
-      event: {
-        id: uid('ev'),
-        type: type as any,
-        title: title.trim(),
-        body: body.trim() || undefined,
-        created_at: Date.now(),
-      },
-    });
-    setTitle(''); setBody('');
-  };
+function DebtsAdmin() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const list = state.debts;
 
   return (
     <div className="space-y-3">
-      <div className="glass-strong p-4 space-y-3">
-        <div className="text-[10px] uppercase tracking-widest text-gold/70">Создать событие</div>
-        <select value={type} onChange={e => setType(e.target.value)} className="input-field">
-          <option value="queen_announcement">👑 Объявление Королевы</option>
-          <option value="big_game_start">🏟️ Началась большая игра</option>
-          <option value="player_eliminated">💀 Выбыл игрок</option>
-          <option value="pet_assigned">🔗 Кто-то стал Питомцем</option>
-          <option value="elite_promoted">👑 Кто-то стал Элитой</option>
-          <option value="custom">📢 Прочее</option>
-        </select>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Заголовок" className="input-field" />
-        <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Текст" className="input-field min-h-[60px] resize-none" />
-        <button onClick={send} disabled={!title.trim()} className="btn-primary w-full">📤 Опубликовать</button>
-      </div>
-
-      <div className="text-[10px] uppercase tracking-widest text-muted">Лента событий</div>
-      <div className="space-y-2">
-        {state.events.slice(0, 30).map(e => (
-          <div key={e.id} className="glass p-3 flex items-start gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="font-bold text-sm">{e.title}</div>
-              {e.body && <div className="text-xs text-muted-foreground">{e.body}</div>}
+      <div className="text-xs text-muted">Все долги под наблюдением. Можно закрывать принудительно.</div>
+      {list.length === 0 ? (
+        <div className="glass p-6 text-center text-sm text-muted-foreground">Долгов нет.</div>
+      ) : list.map(d => {
+        const debtor = state.participants.find(p => p.id === d.debtor_id);
+        const creditor = state.participants.find(p => p.id === d.creditor_id);
+        return (
+          <div key={d.id} className="glass p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted">{d.status}</span>
+              <Yen amount={d.amount} className="text-sm text-gold" iconClass="w-3 h-3" />
             </div>
-            <button
-              onClick={() => dispatch({ type: 'remove_event', id: e.id })}
-              className="text-red-400 text-xs"
-            >✕</button>
+            <div className="text-xs">
+              <span className="text-red-300">{debtor?.display_name}</span>
+              <span className="text-muted"> → должен → </span>
+              <span className="text-gold">{creditor?.display_name}</span>
+            </div>
+            {d.description && <div className="text-[11px] text-muted-foreground mt-1">{d.description}</div>}
+            <div className="flex gap-2 mt-2">
+              {d.status === 'requested' && (
+                <button onClick={async () => {
+                  if (!sb) return;
+                  await sb.from('debts').update({ status: 'active' }).eq('id', d.id);
+                  if (debtor && creditor) {
+                    await sb.from('participants').update({ balance: debtor.balance + d.amount }).eq('id', debtor.id);
+                    await sb.from('participants').update({ balance: Math.max(0, creditor.balance - d.amount) }).eq('id', creditor.id);
+                  }
+                }} className="btn-success text-xs flex-1">Подтвердить</button>
+              )}
+              {d.status === 'active' && (
+                <button onClick={async () => {
+                  if (!sb) return;
+                  if (debtor && creditor) {
+                    await sb.from('participants').update({ balance: Math.max(0, debtor.balance - d.amount) }).eq('id', debtor.id);
+                    await sb.from('participants').update({ balance: creditor.balance + d.amount }).eq('id', creditor.id);
+                  }
+                  await sb.from('debts').update({ status: 'closed' }).eq('id', d.id);
+                }} className="btn-success text-xs flex-1">Закрыть</button>
+              )}
+              <button onClick={async () => {
+                if (!sb) return;
+                if (confirm('Удалить долг полностью?')) {
+                  await sb.from('debts').delete().eq('id', d.id);
+                }
+              }} className="btn-danger text-xs">✕</button>
+            </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RumorsAdmin() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  return (
+    <div className="space-y-2">
+      {state.rumors.length === 0 ? (
+        <div className="glass p-6 text-center text-sm text-muted-foreground">Слухов нет.</div>
+      ) : state.rumors.map(r => (
+        <div key={r.id} className="glass p-3">
+          <div className="flex items-center justify-between mb-1">
+            <div className="font-bold text-sm">{r.title}</div>
+            <span className="text-[10px] text-muted">{r.status}</span>
+          </div>
+          <div className="text-xs text-muted-foreground">{r.text.slice(0, 120)}...</div>
+          <div className="flex gap-2 mt-2">
+            {r.status === 'active' && (
+              <button onClick={async () => {
+                if (!sb) return;
+                await sb.from('rumors').update({ status: 'closed' }).eq('id', r.id);
+              }} className="btn-secondary text-xs flex-1">Закрыть</button>
+            )}
+            <button onClick={async () => {
+              if (!sb) return;
+              if (confirm('Удалить?')) await sb.from('rumors').delete().eq('id', r.id);
+            }} className="btn-danger text-xs">✕</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -596,16 +682,13 @@ function IconsList({ onEdit }: { onEdit: (id: string) => void }) {
   return (
     <div className="space-y-2">
       <div className="glass p-3 text-xs text-muted-foreground">
-        Тапните на персонажа, чтобы настроить иконку: выбрать сегмент из спрайт-листа или загрузить свою.
+        Тапните на персонажа, чтобы настроить иконку.
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {state.participants.filter(p => p.status !== 'gm').map(p => (
-          <button
-            key={p.id}
-            onClick={() => onEdit(p.id)}
-            className="glass p-2 flex flex-col items-center gap-1 text-center active:scale-95"
-          >
-            <CharacterIcon participant={p} size="md" />
+          <button key={p.id} onClick={() => onEdit(p.id)}
+            className="glass p-2 flex flex-col items-center gap-1 text-center active:scale-95">
+            <CharacterIcon participant={p} size="md" ringless={p.status === 'queen'} />
             <div className="text-[10px] truncate w-full">{p.display_name}</div>
           </button>
         ))}
@@ -615,153 +698,186 @@ function IconsList({ onEdit }: { onEdit: (id: string) => void }) {
 }
 
 function IconEditor({ id, onBack }: { id: string; onBack: () => void }) {
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
+  const sb = getSupabase();
   const p = state.participants.find(x => x.id === id);
-  const [sheet, setSheet] = useState<1 | 2 | 3>(p?.sprite_sheet || 1);
+  const [sheet, setSheet] = useState<1 | 2 | 3>((p?.sprite_sheet as any) || 1);
   const [y, setY] = useState(p?.sprite_y || 0);
+  const [x, setX] = useState(p?.sprite_x || 0);
   const [size, setSize] = useState(p?.sprite_size || 86);
   const [customUrl, setCustomUrl] = useState(p?.custom_icon_url || '');
 
   if (!p) return null;
-
   const sheetData = SPRITE_SHEETS[sheet];
 
-  const apply = () => {
-    dispatch({
-      type: 'update_participant',
-      id,
-      patch: {
-        sprite_sheet: sheet,
-        sprite_y: y,
-        sprite_size: size,
-        custom_icon_url: customUrl.trim() || null,
-      },
-    });
+  const apply = async () => {
+    if (!sb) return;
+    await sb.from('participants').update({
+      sprite_sheet: sheet, sprite_y: y, sprite_x: x, sprite_size: size,
+      custom_icon_url: customUrl.trim() || null,
+    }).eq('id', id);
     onBack();
   };
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      setCustomUrl(reader.result as string);
-    };
+    reader.onload = () => setCustomUrl(reader.result as string);
     reader.readAsDataURL(file);
+  };
+
+  // Клик по спрайту → выставить координаты
+  const onSheetClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratioY = sheetData.height / rect.height;
+    const ratioX = sheetData.width / rect.width;
+    const clickY = (e.clientY - rect.top) * ratioY;
+    const clickX = (e.clientX - rect.left) * ratioX;
+    setY(Math.max(0, Math.round(clickY - size / 2)));
+    setX(Math.max(0, Math.round(clickX - size / 2)));
+  };
+
+  // Превью «как в ринге»
+  const previewParticipant = {
+    ...p, sprite_sheet: sheet, sprite_y: y, sprite_x: x, sprite_size: size,
+    custom_icon_url: customUrl || null,
   };
 
   return (
     <div className="space-y-3">
-      <button onClick={onBack} className="text-xs text-gold flex items-center gap-1">
-        ← Назад к списку иконок
-      </button>
+      <button onClick={onBack} className="text-xs text-gold flex items-center gap-1">← Назад</button>
 
       <div className="glass-strong gold-border p-4 flex flex-col items-center gap-3">
         <div className="text-[10px] uppercase tracking-widest text-gold/70">Превью</div>
-        <CharacterIcon
-          participant={{
-            ...p,
-            sprite_sheet: sheet,
-            sprite_y: y,
-            sprite_size: size,
-            custom_icon_url: customUrl || null,
-          }}
-          size="2xl"
-        />
+        <CharacterIcon participant={previewParticipant} size="2xl" ringless />
         <div className="font-bold">{p.display_name}</div>
       </div>
 
-      {/* Кастомное изображение */}
       <div className="glass p-4 space-y-2">
         <div className="text-[10px] uppercase tracking-widest text-gold/70">Своё изображение</div>
-        <input
-          type="url"
-          value={customUrl}
-          onChange={e => setCustomUrl(e.target.value)}
-          placeholder="https://... или загрузите файл"
-          className="input-field"
-        />
-        <input
-          type="file"
-          accept="image/*"
+        <input type="url" value={customUrl} onChange={e => setCustomUrl(e.target.value)}
+          placeholder="https://... или загрузите файл" className="input-field" />
+        <input type="file" accept="image/*"
           onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
-          className="block w-full text-xs text-muted-foreground file:mr-2 file:py-2 file:px-3 file:rounded-xl file:border file:border-gold/30 file:bg-gold/10 file:text-gold file:font-bold"
-        />
+          className="block w-full text-xs text-muted-foreground file:mr-2 file:py-2 file:px-3 file:rounded-xl file:border file:border-gold/30 file:bg-gold/10 file:text-gold file:font-bold" />
         {customUrl && (
-          <button onClick={() => setCustomUrl('')} className="text-xs text-red-300 active:text-red-400">
+          <button onClick={() => setCustomUrl('')} className="text-xs text-red-300">
             ✕ Очистить (использовать спрайт)
           </button>
         )}
       </div>
 
-      {/* Спрайт-выбор */}
       {!customUrl && (
         <div className="glass p-4 space-y-3">
           <div className="text-[10px] uppercase tracking-widest text-gold/70">Из спрайт-листа</div>
           <div className="grid grid-cols-3 gap-1.5">
             {([1, 2, 3] as const).map(n => (
-              <button
-                key={n}
-                onClick={() => { setSheet(n); setY(0); }}
-                className={cn(
-                  'py-2 rounded-xl text-sm font-bold border',
-                  sheet === n ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/40 border-white/8'
-                )}
-              >Лист {n}</button>
+              <button key={n} onClick={() => { setSheet(n); setY(0); setX(0); }}
+                className={cn('py-2 rounded-xl text-sm font-bold border',
+                  sheet === n ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/40 border-white/8')}>
+                Лист {n}
+              </button>
             ))}
           </div>
 
           <div>
             <label className="text-[10px] uppercase tracking-widest text-muted mb-1 flex justify-between">
-              <span>Y-позиция</span>
+              <span>Y (вверх/вниз)</span>
               <span className="font-mono normal-case">{y}px</span>
             </label>
-            <input
-              type="range"
-              min={0}
-              max={Math.max(0, sheetData.height - size)}
-              step={2}
-              value={y}
-              onChange={e => setY(Number(e.target.value))}
-              className="w-full accent-gold"
-            />
+            <input type="range" min={0} max={Math.max(0, sheetData.height - size)} step={1}
+              value={y} onChange={e => setY(Number(e.target.value))} className="w-full accent-gold" />
           </div>
 
           <div>
             <label className="text-[10px] uppercase tracking-widest text-muted mb-1 flex justify-between">
-              <span>Размер квадрата</span>
-              <span className="font-mono normal-case">{size}px</span>
+              <span>X (влево/вправо)</span>
+              <span className="font-mono normal-case">{x}px</span>
             </label>
-            <input
-              type="range"
-              min={60}
-              max={120}
-              step={1}
-              value={size}
-              onChange={e => setSize(Number(e.target.value))}
-              className="w-full accent-gold"
-            />
+            <input type="range" min={0} max={Math.max(0, sheetData.width - Math.min(size, sheetData.width))}
+              step={1} value={x} onChange={e => setX(Number(e.target.value))} className="w-full accent-gold" />
           </div>
 
-          {/* Визуализация на исходном листе */}
-          <div className="text-[10px] uppercase tracking-widest text-muted">Лист {sheet} (полный):</div>
-          <div className="relative max-h-60 overflow-y-auto bg-black/40 rounded-xl border border-white/5">
-            <img
-              src={sheetData.url}
-              alt={`Sheet ${sheet}`}
-              className="w-full"
-              style={{ imageRendering: 'pixelated' }}
-            />
-            <div
-              className="absolute left-0 right-0 border-2 border-gold pointer-events-none"
-              style={{
-                top: `${(y / sheetData.height) * 100}%`,
-                height: `${(size / sheetData.height) * 100}%`,
-              }}
-            />
+          <div>
+            <label className="text-[10px] uppercase tracking-widest text-muted mb-1 flex justify-between">
+              <span>Размер (увелич./уменьш.)</span>
+              <span className="font-mono normal-case">{size}px</span>
+            </label>
+            <input type="range" min={40} max={200} step={1} value={size}
+              onChange={e => setSize(Number(e.target.value))} className="w-full accent-gold" />
+          </div>
+
+          <div className="text-[10px] uppercase tracking-widest text-muted">Лист {sheet} (клик — установить центр):</div>
+          <div className="relative max-h-72 overflow-y-auto bg-black/40 rounded-xl border border-white/5">
+            <div onClick={onSheetClick} className="relative cursor-crosshair">
+              <img src={sheetData.url} alt={`Sheet ${sheet}`} className="w-full" draggable={false}
+                style={{ imageRendering: 'auto' }} />
+              <div className="absolute border-2 border-gold pointer-events-none rounded"
+                style={{
+                  top: `${(y / sheetData.height) * 100}%`,
+                  left: `${(x / sheetData.width) * 100}%`,
+                  width: `${(size / sheetData.width) * 100}%`,
+                  height: `${(size / sheetData.height) * 100}%`,
+                }} />
+            </div>
           </div>
         </div>
       )}
 
       <button onClick={apply} className="btn-primary w-full">💾 Применить</button>
+    </div>
+  );
+}
+
+function ContentAdmin() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [page, setPage] = useState<'help' | 'rules'>('help');
+  const blocks = state.content.filter(c => c.page === page).sort((a, b) => a.sort_order - b.sort_order);
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+
+  const add = async () => {
+    if (!sb || !title.trim() || !body.trim()) return;
+    await sb.from('content_blocks').insert({
+      id: uid('cb'), page, title: title.trim(), body: body.trim(),
+      sort_order: blocks.length, updated_at: new Date().toISOString(),
+    });
+    setTitle(''); setBody('');
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => setPage('help')}
+          className={cn('p-3 rounded-xl border text-sm font-bold',
+            page === 'help' ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/40 border-white/8')}>❔ Помощь</button>
+        <button onClick={() => setPage('rules')}
+          className={cn('p-3 rounded-xl border text-sm font-bold',
+            page === 'rules' ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/40 border-white/8')}>⚖️ Правила</button>
+      </div>
+
+      <div className="glass-strong p-4 space-y-3">
+        <div className="text-[10px] uppercase tracking-widest text-gold/70">Добавить блок</div>
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Заголовок" className="input-field" />
+        <textarea value={body} onChange={e => setBody(e.target.value)}
+          placeholder="Текст" className="input-field min-h-[80px] resize-none" />
+        <button onClick={add} disabled={!title.trim() || !body.trim()} className="btn-primary w-full">Добавить</button>
+      </div>
+
+      <div className="space-y-2">
+        {blocks.map(b => (
+          <div key={b.id} className="glass p-3">
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-bold text-sm">{b.title}</div>
+              <button onClick={async () => {
+                if (!sb) return;
+                if (confirm('Удалить блок?')) await sb.from('content_blocks').delete().eq('id', b.id);
+              }} className="text-red-400 text-xs">✕</button>
+            </div>
+            <div className="text-xs text-muted-foreground whitespace-pre-line">{b.body}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

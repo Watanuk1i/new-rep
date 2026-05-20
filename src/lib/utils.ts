@@ -28,6 +28,7 @@ export function getStatusLabel(status: string): string {
     elite: 'Элита',
     queen: 'Королева',
     gm: 'Ведущий',
+    collector: 'Коллектор',
   };
   return labels[status] || status;
 }
@@ -40,20 +41,22 @@ export function getStatusColor(status: string): string {
     elite: 'bg-gold/15 text-gold border-gold/30',
     queen: 'bg-gradient-to-r from-gold/25 to-amber-500/25 text-gold-light border-gold/50',
     gm: 'bg-white/10 text-white/80 border-white/20',
+    collector: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
   };
   return colors[status] || 'bg-gray-500/20 text-gray-400';
 }
 
-export function getInitials(name: string): string {
-  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-}
-
-export function timeAgo(ms: number): string {
+export function timeAgo(input: number | string): string {
+  const ms = typeof input === 'string' ? new Date(input).getTime() : input;
   const diff = Math.floor((Date.now() - ms) / 1000);
   if (diff < 60) return 'только что';
   if (diff < 3600) return `${Math.floor(diff / 60)} мин`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} ч`;
   return `${Math.floor(diff / 86400)} дн`;
+}
+
+export function getInitials(name: string): string {
+  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
 export function uid(prefix = 'id'): string {

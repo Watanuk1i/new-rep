@@ -5,18 +5,28 @@ import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen } from '@/components/ui/Yen';
 import { cn, getStatusLabel, getStatusColor } from '@/lib/utils';
 import type { Participant } from '@/lib/store/types';
+import { useStore } from '@/lib/store/StoreProvider';
 
 interface Props {
   participant: Participant;
   rank?: number;
   variant?: 'list' | 'grid';
-  ownerName?: string | null;
 }
 
-export function ParticipantCard({ participant, rank, variant = 'list', ownerName }: Props) {
+export function ParticipantCard({ participant, rank, variant = 'list' }: Props) {
+  const { state } = useStore();
   const isQueen = participant.status === 'queen';
   const isElite = participant.status === 'elite';
   const isPet = participant.status === 'pet';
+  const isMaster = participant.status === 'master';
+
+  const owner = isPet && participant.pet_owner_id
+    ? state.participants.find(p => p.id === participant.pet_owner_id)
+    : null;
+
+  const myPets = isMaster
+    ? state.participants.filter(p => p.pet_owner_id === participant.id)
+    : [];
 
   if (variant === 'list') {
     return (
@@ -38,7 +48,7 @@ export function ParticipantCard({ participant, rank, variant = 'list', ownerName
               {rank}
             </div>
           )}
-          <CharacterIcon participant={participant} size="md" />
+          <CharacterIcon participant={participant} size="md" ringless={isQueen} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h3 className={cn(
@@ -57,8 +67,11 @@ export function ParticipantCard({ participant, rank, variant = 'list', ownerName
                 <span className="text-amber-400">★</span>
                 <span>{participant.reputation}</span>
               </span>
-              {isPet && ownerName && (
-                <span className="text-[10px] text-red-300 truncate">↳ {ownerName}</span>
+              {isPet && owner && (
+                <span className="text-[10px] text-red-300 truncate">↳ {owner.display_name}</span>
+              )}
+              {isMaster && myPets.length > 0 && (
+                <span className="text-[10px] text-purple-300 truncate">🔗 {myPets.length} питомц.</span>
               )}
             </div>
           </div>
@@ -80,7 +93,7 @@ export function ParticipantCard({ participant, rank, variant = 'list', ownerName
         isElite && 'gold-border',
         isPet && 'crimson-border'
       )}>
-        <CharacterIcon participant={participant} size="lg" />
+        <CharacterIcon participant={participant} size="lg" ringless={isQueen} />
         <div className="min-w-0 w-full">
           <div className={cn(
             'font-bold text-sm truncate leading-tight',

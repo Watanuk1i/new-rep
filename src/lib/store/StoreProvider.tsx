@@ -1,327 +1,349 @@
 'use client';
 
-// Глобальный стор: React Context + localStorage. Архитектура готова для замены mock на Supabase/Firebase.
-// === Места интеграции БД === ищите комментарии "DB:" внутри проекта.
+// Supabase-based глобальный стор + Realtime подписки.
+// Данные общие для всех пользователей (мультиплеер).
 
-import React, { createContext, useContext, useEffect, useMemo, useReducer, useState } from 'react';
-import {
-  AppState, Participant, PariMarket, PariBet, PariComment,
-  Debt, SuperGame, AcademyEvent, Rumor, Role, GameChallenge,
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { getSupabase } from '@/lib/supabase/client';
+import type {
+  Participant, GameChallenge, PariMarket, Debt, SuperGame,
+  AcademyEvent, Notification, Rumor, ContentBlock, HistoryEntry, RoomState, Role,
 } from './types';
-import { buildInitialState, SPECIAL_ACCOUNTS } from './seed';
 
-const STORAGE_KEY = 'academy-app-state-v3';
+const AUTH_KEY = 'academy-auth-v4';
 
-type Action =
-  | { type: 'hydrate'; state: AppState }
-  | { type: 'reset' }
-  | { type: 'set_day'; day: number }
-  | { type: 'set_season'; season: number }
-  | { type: 'login'; userId: string }
-  | { type: 'logout' }
-  | { type: 'update_participant'; id: string; patch: Partial<Participant> }
-  | { type: 'add_participant'; participant: Participant }
-  | { type: 'remove_participant'; id: string }
-  | { type: 'randomize_balances' }
-  | { type: 'add_pari'; pari: PariMarket }
-  | { type: 'place_bet'; bet: PariBet }
-  | { type: 'add_pari_comment'; comment: PariComment }
-  | { type: 'resolve_pari'; market_id: string; option_id: string }
-  | { type: 'cancel_pari'; market_id: string }
-  | { type: 'update_pari'; id: string; patch: Partial<PariMarket> }
-  | { type: 'add_debt'; debt: Debt }
-  | { type: 'close_debt'; id: string }
-  | { type: 'add_super_game'; game: SuperGame }
-  | { type: 'update_super_game'; id: string; patch: Partial<SuperGame> }
-  | { type: 'remove_super_game'; id: string }
-  | { type: 'add_event'; event: AcademyEvent }
-  | { type: 'remove_event'; id: string }
-  | { type: 'add_rumor'; rumor: Rumor }
-  | { type: 'add_challenge'; challenge: GameChallenge }
-  | { type: 'accept_challenge'; id: string; acceptor_id: string }
-  | { type: 'finish_challenge'; id: string; winner_id: string | null; result_data?: any }
-  | { type: 'cancel_challenge'; id: string };
-
-function reducer(state: AppState, action: Action): AppState {
-  switch (action.type) {
-    case 'hydrate':
-      return action.state;
-    case 'reset':
-      return buildInitialState();
-    case 'set_day':
-      return { ...state, day: Math.max(1, Math.min(5, action.day)) };
-    case 'set_season':
-      return { ...state, season: Math.max(1, action.season) };
-    case 'login':
-      return { ...state, currentUserId: action.userId };
-    case 'logout':
-      return { ...state, currentUserId: null };
-    case 'update_participant':
-      return {
-        ...state,
-        participants: state.participants.map(p => p.id === action.id ? { ...p, ...action.patch } : p),
-      };
-    case 'add_participant':
-      return { ...state, participants: [...state.participants, action.participant] };
-    case 'remove_participant':
-      return { ...state, participants: state.participants.filter(p => p.id !== action.id) };
-    case 'randomize_balances': {
-      const min = 100_000, max = 10_000_000;
-      const rand = () => {
-        const v = Math.exp(Math.random() * (Math.log(max) - Math.log(min)) + Math.log(min));
-        return Math.round(v / 100) * 100;
-      };
-      return {
-        ...state,
-        participants: state.participants.map(p => p.status === 'gm' ? p : { ...p, balance: rand() }),
-      };
-    }
-    case 'add_pari':
-      return { ...state, pari: [action.pari, ...state.pari] };
-    case 'place_bet':
-      return {
-        ...state,
-        pari: state.pari.map(m =>
-          m.id === action.bet.market_id ? { ...m, bets: [...m.bets, action.bet] } : m
-        ),
-        participants: state.participants.map(p =>
-          p.id === action.bet.participant_id ? { ...p, balance: p.balance - action.bet.amount } : p
-        ),
-      };
-    case 'add_pari_comment':
-      return {
-        ...state,
-        pari: state.pari.map(m =>
-          m.id === action.comment.market_id ? { ...m, comments: [...m.comments, action.comment] } : m
-        ),
-      };
-    case 'resolve_pari': {
-      const market = state.pari.find(m => m.id === action.market_id);
-      if (!market) return state;
-      const totalPool = market.bets.reduce((s, b) => s + b.amount, 0);
-      const commission = Math.floor(totalPool * market.commission_pct / 100);
-      const payoutPool = totalPool - commission;
-      const winners = market.bets.filter(b => b.option_id === action.option_id);
-      const winningTotal = winners.reduce((s, b) => s + b.amount, 0);
-
-      const balanceUpdates = new Map<string, number>();
-      balanceUpdates.set(market.creator_id, (balanceUpdates.get(market.creator_id) || 0) + commission);
-      if (winningTotal > 0) {
-        for (const w of winners) {
-          const payout = Math.floor((w.amount / winningTotal) * payoutPool);
-          balanceUpdates.set(w.participant_id, (balanceUpdates.get(w.participant_id) || 0) + payout);
-        }
-      }
-
-      const resolvedEvent: AcademyEvent = {
-        id: `ev-${Date.now()}`,
-        type: 'pari_resolved',
-        title: `Пари решено: ${market.title}`,
-        body: `Победителей: ${winners.length}`,
-        created_at: Date.now(),
-        link_url: '/pari',
-      };
-
-      return {
-        ...state,
-        pari: state.pari.map(m =>
-          m.id === action.market_id ? { ...m, status: 'resolved', resolved_option_id: action.option_id } : m
-        ),
-        participants: state.participants.map(p => {
-          const delta = balanceUpdates.get(p.id);
-          return delta ? { ...p, balance: p.balance + delta } : p;
-        }),
-        events: [resolvedEvent, ...state.events].slice(0, 100),
-      };
-    }
-    case 'cancel_pari': {
-      const market = state.pari.find(m => m.id === action.market_id);
-      if (!market) return state;
-      const refunds = new Map<string, number>();
-      market.bets.forEach(b => refunds.set(b.participant_id, (refunds.get(b.participant_id) || 0) + b.amount));
-      return {
-        ...state,
-        pari: state.pari.map(m => m.id === action.market_id ? { ...m, status: 'cancelled' } : m),
-        participants: state.participants.map(p =>
-          refunds.has(p.id) ? { ...p, balance: p.balance + refunds.get(p.id)! } : p
-        ),
-      };
-    }
-    case 'update_pari':
-      return { ...state, pari: state.pari.map(m => m.id === action.id ? { ...m, ...action.patch } : m) };
-    case 'add_debt':
-      return { ...state, debts: [action.debt, ...state.debts] };
-    case 'close_debt': {
-      const debt = state.debts.find(d => d.id === action.id);
-      if (!debt) return state;
-      return {
-        ...state,
-        debts: state.debts.map(d => d.id === action.id ? { ...d, status: 'closed' } : d),
-        participants: state.participants.map(p => {
-          if (p.id === debt.debtor_id) return { ...p, balance: p.balance - debt.amount };
-          if (p.id === debt.creditor_id) return { ...p, balance: p.balance + debt.amount };
-          return p;
-        }),
-      };
-    }
-    case 'add_super_game':
-      return { ...state, superGames: [action.game, ...state.superGames] };
-    case 'update_super_game':
-      return {
-        ...state,
-        superGames: state.superGames.map(g => g.id === action.id ? { ...g, ...action.patch } : g),
-      };
-    case 'remove_super_game':
-      return { ...state, superGames: state.superGames.filter(g => g.id !== action.id) };
-    case 'add_event':
-      return { ...state, events: [action.event, ...state.events].slice(0, 100) };
-    case 'remove_event':
-      return { ...state, events: state.events.filter(e => e.id !== action.id) };
-    case 'add_rumor':
-      return { ...state, rumors: [action.rumor, ...state.rumors] };
-    case 'add_challenge':
-      return { ...state, challenges: [action.challenge, ...state.challenges] };
-    case 'accept_challenge': {
-      return {
-        ...state,
-        challenges: state.challenges.map(c =>
-          c.id === action.id ? { ...c, status: 'accepted' as const, opponent_id: action.acceptor_id } : c
-        ),
-      };
-    }
-    case 'finish_challenge': {
-      const ch = state.challenges.find(c => c.id === action.id);
-      if (!ch) return state;
-      const stake = ch.stake_amount;
-      const winnerId = action.winner_id;
-      const loserId = winnerId === ch.creator_id ? ch.opponent_id : ch.creator_id;
-      return {
-        ...state,
-        challenges: state.challenges.map(c =>
-          c.id === action.id ? { ...c, status: 'finished' as const, winner_id: winnerId, result_data: action.result_data } : c
-        ),
-        participants: state.participants.map(p => {
-          if (winnerId && p.id === winnerId) return { ...p, balance: p.balance + stake, wins: p.wins + 1 };
-          if (loserId && p.id === loserId) return { ...p, balance: p.balance - stake, losses: p.losses + 1 };
-          return p;
-        }),
-      };
-    }
-    case 'cancel_challenge':
-      return {
-        ...state,
-        challenges: state.challenges.map(c =>
-          c.id === action.id ? { ...c, status: 'cancelled' as const } : c
-        ),
-      };
-    default:
-      return state;
-  }
+interface State {
+  participants: Participant[];
+  challenges: GameChallenge[];
+  pari: PariMarket[];
+  debts: Debt[];
+  superGames: SuperGame[];
+  events: AcademyEvent[];
+  notifications: Notification[];
+  rumors: Rumor[];
+  content: ContentBlock[];
+  history: HistoryEntry[];
+  room: RoomState;
 }
 
-interface StoreContextValue {
-  state: AppState;
-  dispatch: React.Dispatch<Action>;
+const initialState: State = {
+  participants: [],
+  challenges: [],
+  pari: [],
+  debts: [],
+  superGames: [],
+  events: [],
+  notifications: [],
+  rumors: [],
+  content: [],
+  history: [],
+  room: { id: 'academy', season: 1, day: 1, updated_at: '' },
+};
+
+interface StoreCtx {
+  state: State;
+  ready: boolean;
+  online: boolean;
   currentUser: Participant | null;
   role: Role;
-  hydrated: boolean;
-  login: (username: string, password: string) => boolean;
-  loginAsParticipant: (id: string) => void;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
-  notifyGM: (reason: string, fromParticipantId: string) => void;
+  refresh: () => Promise<void>;
+  // helpers
+  notify: (recipientId: string, n: { type: string; title: string; body?: string; link_url?: string }) => Promise<void>;
+  notifyAllPlayers: (n: { type: string; title: string; body?: string; link_url?: string }, exceptId?: string) => Promise<void>;
+  addEvent: (e: { type: string; title: string; body?: string; link_url?: string; related_participant_id?: string; is_for_gm_only?: boolean }) => Promise<void>;
+  addHistory: (participantId: string, action: string, description: string, amount?: number, link_url?: string) => Promise<void>;
+  markNotificationsRead: (ids: string[]) => Promise<void>;
 }
 
-const StoreContext = createContext<StoreContextValue | null>(null);
+const Ctx = createContext<StoreCtx | null>(null);
+
+function uid(prefix = 'id') {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined as any, buildInitialState);
-  const [hydrated, setHydrated] = useState(false);
+  const [state, setState] = useState<State>(initialState);
+  const [ready, setReady] = useState(false);
+  const [online, setOnline] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const sb = useMemo(() => getSupabase(), []);
+  const channelsRef = useRef<any[]>([]);
 
+  // Загрузка авторизации
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.participants) && parsed.participants.length > 0) {
-          dispatch({ type: 'hydrate', state: parsed });
-        }
-      }
+      const id = localStorage.getItem(AUTH_KEY);
+      if (id) setCurrentUserId(id);
     } catch {}
-    setHydrated(true);
   }, []);
 
-  useEffect(() => {
-    if (!hydrated) return;
+  // Загрузка данных + realtime подписки
+  const loadAll = useCallback(async () => {
+    if (!sb) {
+      setReady(true);
+      setOnline(false);
+      return;
+    }
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {}
-  }, [state, hydrated]);
+      const [
+        parts, ch, pari, debts, sg, events, rumors, content, room
+      ] = await Promise.all([
+        sb.from('participants').select('*').order('created_at', { ascending: true }),
+        sb.from('challenges').select('*').order('created_at', { ascending: false }),
+        sb.from('pari').select('*').order('created_at', { ascending: false }),
+        sb.from('debts').select('*').order('created_at', { ascending: false }),
+        sb.from('super_games').select('*').order('created_at', { ascending: false }),
+        sb.from('events').select('*').order('created_at', { ascending: false }).limit(100),
+        sb.from('rumors').select('*').order('created_at', { ascending: false }),
+        sb.from('content_blocks').select('*').order('sort_order', { ascending: true }),
+        sb.from('room_state').select('*').eq('id', 'academy').maybeSingle(),
+      ]);
+
+      setState(prev => ({
+        ...prev,
+        participants: parts.data || [],
+        challenges: (ch.data || []) as any,
+        pari: (pari.data || []) as any,
+        debts: (debts.data || []) as any,
+        superGames: (sg.data || []) as any,
+        events: (events.data || []) as any,
+        rumors: (rumors.data || []) as any,
+        content: (content.data || []) as any,
+        room: (room.data as any) || prev.room,
+      }));
+      setOnline(true);
+    } catch (e) {
+      console.error('[store] load failed', e);
+      setOnline(false);
+    } finally {
+      setReady(true);
+    }
+  }, [sb]);
+
+  // Загрузка нотификаций для текущего пользователя
+  const loadNotifications = useCallback(async () => {
+    if (!sb || !currentUserId) {
+      setState(prev => ({ ...prev, notifications: [] }));
+      return;
+    }
+    const { data } = await sb.from('notifications')
+      .select('*').eq('recipient_id', currentUserId)
+      .order('created_at', { ascending: false }).limit(50);
+    setState(prev => ({ ...prev, notifications: (data || []) as any }));
+  }, [sb, currentUserId]);
+
+  const loadHistory = useCallback(async () => {
+    if (!sb || !currentUserId) return;
+    const { data } = await sb.from('history')
+      .select('*').eq('participant_id', currentUserId)
+      .order('created_at', { ascending: false }).limit(100);
+    setState(prev => ({ ...prev, history: (data || []) as any }));
+  }, [sb, currentUserId]);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => { loadNotifications(); loadHistory(); }, [loadNotifications, loadHistory]);
+
+  // Realtime: подписки на все таблицы
+  useEffect(() => {
+    if (!sb) return;
+    // Очищаем старые каналы
+    channelsRef.current.forEach(c => sb.removeChannel(c));
+    channelsRef.current = [];
+
+    const tables: { name: string; key: keyof State }[] = [
+      { name: 'participants', key: 'participants' },
+      { name: 'challenges', key: 'challenges' },
+      { name: 'pari', key: 'pari' },
+      { name: 'debts', key: 'debts' },
+      { name: 'super_games', key: 'superGames' },
+      { name: 'events', key: 'events' },
+      { name: 'rumors', key: 'rumors' },
+      { name: 'content_blocks', key: 'content' },
+    ];
+
+    for (const t of tables) {
+      const ch = sb.channel(`rt-${t.name}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: t.name }, (payload: any) => {
+          setState(prev => {
+            const list = prev[t.key] as any[];
+            if (payload.eventType === 'INSERT') {
+              if (list.find(x => x.id === payload.new.id)) return prev;
+              return { ...prev, [t.key]: [payload.new, ...list] };
+            }
+            if (payload.eventType === 'UPDATE') {
+              return { ...prev, [t.key]: list.map(x => x.id === payload.new.id ? payload.new : x) };
+            }
+            if (payload.eventType === 'DELETE') {
+              return { ...prev, [t.key]: list.filter(x => x.id !== payload.old.id) };
+            }
+            return prev;
+          });
+        })
+        .subscribe();
+      channelsRef.current.push(ch);
+    }
+
+    // room_state — отдельный канал
+    const roomCh = sb.channel('rt-room')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_state' }, (payload: any) => {
+        if (payload.new) setState(prev => ({ ...prev, room: payload.new }));
+      })
+      .subscribe();
+    channelsRef.current.push(roomCh);
+
+    // notifications — фильтр по recipient
+    if (currentUserId) {
+      const notifCh = sb.channel(`rt-notif-${currentUserId}`)
+        .on('postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${currentUserId}` },
+          (payload: any) => {
+            setState(prev => ({ ...prev, notifications: [payload.new, ...prev.notifications] }));
+          })
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${currentUserId}` },
+          (payload: any) => {
+            setState(prev => ({
+              ...prev,
+              notifications: prev.notifications.map(n => n.id === payload.new.id ? payload.new : n),
+            }));
+          })
+        .subscribe();
+      channelsRef.current.push(notifCh);
+
+      // history — фильтр
+      const histCh = sb.channel(`rt-hist-${currentUserId}`)
+        .on('postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'history', filter: `participant_id=eq.${currentUserId}` },
+          (payload: any) => {
+            setState(prev => ({ ...prev, history: [payload.new, ...prev.history] }));
+          })
+        .subscribe();
+      channelsRef.current.push(histCh);
+    }
+
+    return () => {
+      channelsRef.current.forEach(c => sb.removeChannel(c));
+      channelsRef.current = [];
+    };
+  }, [sb, currentUserId]);
 
   const currentUser = useMemo(
-    () => state.participants.find(p => p.id === state.currentUserId) || null,
-    [state.currentUserId, state.participants]
+    () => state.participants.find(p => p.id === currentUserId) || null,
+    [state.participants, currentUserId]
   );
 
   const role: Role = useMemo(() => {
     if (!currentUser) return 'guest';
     if (currentUser.status === 'gm') return 'gm';
     if (currentUser.status === 'queen') return 'queen';
+    if (currentUser.status === 'collector') return 'collector';
     return 'player';
   }, [currentUser]);
 
-  const value: StoreContextValue = {
-    state,
-    dispatch,
-    currentUser,
-    role,
-    hydrated,
-    login(username, password) {
-      const u = username.trim().toLowerCase();
-      if (u === SPECIAL_ACCOUNTS.gm.username && password === SPECIAL_ACCOUNTS.gm.password) {
-        dispatch({ type: 'login', userId: SPECIAL_ACCOUNTS.gm.participant_id });
-        return true;
-      }
-      if (u === SPECIAL_ACCOUNTS.queen.username && password === SPECIAL_ACCOUNTS.queen.password) {
-        dispatch({ type: 'login', userId: SPECIAL_ACCOUNTS.queen.participant_id });
-        return true;
-      }
-      const p = state.participants.find(
-        x => x.display_name.toLowerCase() === u && x.status === 'player'
-      );
-      if (p) {
-        dispatch({ type: 'login', userId: p.id });
-        return true;
-      }
-      return false;
-    },
-    loginAsParticipant(id) {
-      dispatch({ type: 'login', userId: id });
-    },
-    logout() {
-      dispatch({ type: 'logout' });
-    },
-    notifyGM(reason, fromParticipantId) {
-      const from = state.participants.find(p => p.id === fromParticipantId);
-      dispatch({
-        type: 'add_event',
-        event: {
-          id: `ev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          type: 'gm_alert',
-          title: 'Запрос Ведущему',
-          body: `${from?.display_name || 'Игрок'}: ${reason}`,
-          related_participant_id: fromParticipantId,
-          is_for_gm_only: true,
-          created_at: Date.now(),
-        },
-      });
-    },
+  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
+    if (!sb) return false;
+    const u = username.trim().toLowerCase();
+    // Пробуем найти по display_name (lower) или по специальным аккаунтам
+    const { data } = await sb.from('participants').select('*');
+    const p = (data || []).find((x: any) =>
+      x.display_name.toLowerCase() === u ||
+      (x.id === 'p-gm' && u === 'host') ||
+      (x.id === 'p-queen' && u === 'queen')
+    );
+    if (!p) return false;
+    // Проверка пароля
+    if (p.password) {
+      if (p.password !== password) return false;
+    }
+    // Иначе — любой пароль для тестов
+    setCurrentUserId(p.id);
+    try { localStorage.setItem(AUTH_KEY, p.id); } catch {}
+    return true;
+  }, [sb]);
+
+  const logout = useCallback(() => {
+    setCurrentUserId(null);
+    try { localStorage.removeItem(AUTH_KEY); } catch {}
+    setState(prev => ({ ...prev, notifications: [], history: [] }));
+  }, []);
+
+  const notify: StoreCtx['notify'] = useCallback(async (recipientId, n) => {
+    if (!sb) return;
+    await sb.from('notifications').insert({
+      id: uid('n'),
+      recipient_id: recipientId,
+      type: n.type,
+      title: n.title,
+      body: n.body || null,
+      link_url: n.link_url || null,
+      is_read: false,
+    });
+  }, [sb]);
+
+  const notifyAllPlayers: StoreCtx['notifyAllPlayers'] = useCallback(async (n, exceptId) => {
+    if (!sb) return;
+    const targets = state.participants.filter(p => p.status !== 'gm' && p.id !== exceptId);
+    if (targets.length === 0) return;
+    const rows = targets.map(p => ({
+      id: uid('n'),
+      recipient_id: p.id,
+      type: n.type,
+      title: n.title,
+      body: n.body || null,
+      link_url: n.link_url || null,
+      is_read: false,
+    }));
+    await sb.from('notifications').insert(rows);
+  }, [sb, state.participants]);
+
+  const addEvent: StoreCtx['addEvent'] = useCallback(async (e) => {
+    if (!sb) return;
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: e.type,
+      title: e.title,
+      body: e.body || null,
+      link_url: e.link_url || null,
+      related_participant_id: e.related_participant_id || null,
+      is_for_gm_only: e.is_for_gm_only || false,
+    });
+  }, [sb]);
+
+  const addHistory: StoreCtx['addHistory'] = useCallback(async (pid, action, desc, amount, link) => {
+    if (!sb) return;
+    await sb.from('history').insert({
+      id: uid('h'),
+      participant_id: pid,
+      action,
+      description: desc,
+      amount: amount ?? null,
+      link_url: link || null,
+    });
+  }, [sb]);
+
+  const markNotificationsRead: StoreCtx['markNotificationsRead'] = useCallback(async (ids) => {
+    if (!sb || ids.length === 0) return;
+    await sb.from('notifications').update({ is_read: true }).in('id', ids);
+  }, [sb]);
+
+  const refresh = loadAll;
+
+  const value: StoreCtx = {
+    state, ready, online, currentUser, role,
+    login, logout, refresh,
+    notify, notifyAllPlayers, addEvent, addHistory, markNotificationsRead,
   };
 
-  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useStore() {
-  const ctx = useContext(StoreContext);
+  const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useStore must be used within StoreProvider');
   return ctx;
 }
+
+// Утилита для генерации id
+export { uid };

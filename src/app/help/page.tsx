@@ -1,8 +1,18 @@
 'use client';
 
-import Link from 'next/link';
+import { useStore } from '@/lib/store/StoreProvider';
+
+const FALLBACK = [
+  { title: '🎲 Как делать ставки', body: 'Зайдите в раздел «Пари» — выберите вариант → введите сумму → подтвердите.' },
+  { title: '🔗 Как стать или взять Питомца', body: 'Через проигрыш в Большой игре или прямое соглашение. Условия выкупа определяет Хозяин.' },
+  { title: '📜 Долги', body: 'Создайте запрос → вторая сторона подтверждает → деньги переводятся. Закрыть может любая сторона.' },
+];
 
 export default function HelpPage() {
+  const { state } = useStore();
+  const blocks = state.content.filter(c => c.page === 'help').sort((a, b) => a.sort_order - b.sort_order);
+  const showFallback = blocks.length === 0;
+
   return (
     <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-4 animate-fade-in">
       <div className="glass-strong gold-border p-5">
@@ -11,56 +21,18 @@ export default function HelpPage() {
         <p className="text-xs text-muted-foreground mt-1">Краткое руководство по Академии.</p>
       </div>
 
-      <Section title="🎲 Как делать ставки" items={[
-        'Зайдите в раздел «Пари» — там список открытых ставок.',
-        'Нажмите на нужный вариант — откроется окно ставки.',
-        'Введите сумму и подтвердите. Сумма сразу спишется.',
-        'После закрытия дня пари переходит в «Ожидание подтверждения». Решает Селестия или Ведущий.',
-      ]} />
+      {(showFallback ? FALLBACK : blocks).map((b, i) => (
+        <div key={i} className="glass p-4">
+          <h3 className="section-title text-sm mb-2">{b.title}</h3>
+          <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">{b.body}</p>
+        </div>
+      ))}
 
-      <Section title="🔗 Как стать или взять Питомца" items={[
-        'Питомцами становятся через проигрыш в Большой игре или прямое соглашение.',
-        'Хозяин получает право давать поручения в рамках границ.',
-        'Условия выкупа определяет Хозяин и фиксирует Ведущий.',
-      ]} />
-
-      <Section title="👑 Как попасть в Элиту" items={[
-        'Войти в Элиту можно через победу в специальной игре «Башня статуса».',
-        'Также Селестия может назначить Элиту своим решением.',
-        'Элита получает золотой статус и доступ к особым событиям.',
-      ]} />
-
-      <Section title="📜 Долги" items={[
-        'Возьмите долг у любого игрока в разделе «Долги».',
-        'Срок — 1-4 день. Закрыть может должник или кредитор.',
-        'Просроченный долг = штраф репутации.',
-      ]} />
-
-      <Section title="📨 Связь с Ведущим" items={[
-        'Если возникает спор — нажмите «Позвать Ведущего» в карточке игрока.',
-        'Ведущий получит уведомление с указанием от кого и причиной.',
-      ]} />
-
-      <div className="glass p-4 text-center">
-        <p className="text-sm text-muted-foreground mb-3">Не нашли ответ?</p>
-        <Link href="/rules" className="btn-outline inline-flex">⚖️ Открыть правила</Link>
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div className="glass p-4">
-      <h3 className="section-title text-sm mb-2">{title}</h3>
-      <ul className="space-y-2 text-sm text-muted-foreground">
-        {items.map((it, i) => (
-          <li key={i} className="flex gap-2">
-            <span className="text-gold mt-0.5">▸</span>
-            <span>{it}</span>
-          </li>
-        ))}
-      </ul>
+      {showFallback && (
+        <div className="glass p-3 text-xs text-muted-foreground">
+          Ведущий может добавить свои блоки в админке (Контент).
+        </div>
+      )}
     </div>
   );
 }

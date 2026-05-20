@@ -176,7 +176,7 @@ export function TopBar() {
               </Link>
             )}
 
-            <DrawerLink href="/account" icon="💳" label="Аккаунт и баланс" pathname={pathname} />
+            <DrawerLink href="/" icon="🏛️" label="Главная" pathname={pathname} />
             {currentUser && (
               <DrawerLink href={`/profile/${currentUser.id}`} icon="👤" label="Профиль" pathname={pathname} />
             )}

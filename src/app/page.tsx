@@ -7,23 +7,45 @@ import { Yen } from '@/components/ui/Yen';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { timeAgo, cn } from '@/lib/utils';
 
+const EVENT_ICONS: Record<string, string> = {
+  big_game_start: '🏟️',
+  big_game_finished: '🏆',
+  player_eliminated: '💀',
+  pet_assigned: '🔗',
+  elite_promoted: '👑',
+  queen_announcement: '👑',
+  rumor_new: '👁️',
+  pari_resolved: '✓',
+  gm_alert: '⚠️',
+  day_change: '📅',
+  season_change: '✨',
+  custom: '📢',
+};
+
+// Какие типы событий показываем в "События академии" (ТОЛЬКО важное)
+const ACADEMY_EVENT_TYPES = new Set([
+  'big_game_start', 'big_game_finished', 'queen_announcement',
+  'rumor_new', 'elite_promoted', 'pet_assigned', 'day_change',
+  'season_change', 'custom',
+]);
+
 export default function HomePage() {
-  const { state, role } = useStore();
+  const { state, role, ready } = useStore();
   const players = state.participants.filter(p => p.status !== 'gm');
   const queen = state.participants.find(p => p.status === 'queen');
   const elite = state.participants.filter(p => p.status === 'elite');
   const totalBank = players.reduce((s, p) => s + p.balance, 0);
   const activePari = state.pari.filter(m => m.status === 'open' || m.status === 'awaiting_confirmation').length;
 
-  // Сортировка по балансу для рейтинга (топ-5)
   const topRanking = [...players]
     .filter(p => p.status !== 'queen')
     .sort((a, b) => b.balance - a.balance)
     .slice(0, 5);
 
-  // События для пользователей (без gm-only, если не админ)
-  const visibleEvents = state.events
+  // Фильтр событий академии
+  const academyEvents = state.events
     .filter(e => !(e.is_for_gm_only && role !== 'gm' && role !== 'queen'))
+    .filter(e => ACADEMY_EVENT_TYPES.has(e.type))
     .slice(0, 5);
 
   return (
@@ -37,7 +59,7 @@ export default function HomePage() {
             <div className="flex items-center gap-2 mb-2">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-crimson/20 border border-crimson/40 text-[10px] font-bold uppercase tracking-widest text-red-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                Сезон {state.season} · День {state.day}
+                Сезон {state.room.season} · День {state.room.day}
               </span>
             </div>
             <h2 className="font-heading text-2xl sm:text-3xl font-bold leading-tight">
@@ -56,14 +78,14 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Президент */}
+      {/* Президент — без анимации */}
       {queen && (
         <section>
           <div className="text-[10px] font-bold uppercase tracking-widest text-gold/70 mb-2 px-1">Президент</div>
           <Link href={`/profile/${queen.id}`}>
             <div className="glass-strong gold-border p-4 flex items-center gap-3 active:scale-[0.99] transition-transform duration-100">
               <div className="text-3xl">👑</div>
-              <CharacterIcon participant={queen} size="lg" />
+              <CharacterIcon participant={queen} size="lg" ringless />
               <div className="flex-1 min-w-0">
                 <div className="text-[10px] uppercase tracking-widest text-gold/70">Королева</div>
                 <h3 className="font-heading text-lg font-bold text-gradient-gold leading-tight truncate">
@@ -80,24 +102,25 @@ export default function HomePage() {
       {elite.length > 0 && (
         <section>
           <h2 className="section-title text-base mb-2 px-1"><span>👑</span> Элита</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {elite.map(p => <ParticipantCard key={p.id} participant={p} variant="grid" />)}
           </div>
         </section>
       )}
 
-      {/* Рейтинг */}
+      {/* Рейтинг — отступы между карточками */}
       <section>
         <div className="flex items-center justify-between mb-2 px-1">
           <h2 className="section-title text-base"><span>🏆</span> Рейтинг Академии</h2>
-          <Link href="/participants" className="text-xs text-gold/80 active:text-gold-light font-semibold">
-            Все →
-          </Link>
+          <Link href="/participants" className="text-xs text-gold/80 active:text-gold-light font-semibold">Все →</Link>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {topRanking.map((p, i) => (
             <ParticipantCard key={p.id} participant={p} rank={i + 1} variant="list" />
           ))}
+          {topRanking.length === 0 && ready && (
+            <div className="glass p-6 text-center text-sm text-muted-foreground">Игроков нет</div>
+          )}
         </div>
       </section>
 
@@ -115,56 +138,33 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* События */}
+      {/* События академии (отдельно от уведомлений) */}
       <section>
         <div className="flex items-center justify-between mb-2 px-1">
           <h2 className="section-title text-base"><span>📡</span> События академии</h2>
-          <Link href="/notifications" className="text-xs text-gold/80 font-semibold">Все →</Link>
         </div>
-        <div className="glass p-4">
-          {visibleEvents.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-2">Событий пока нет.</p>
-          ) : (
-            <div className="space-y-3">
-              {visibleEvents.map((e, idx) => (
-                <Link
-                  key={e.id}
-                  href={e.link_url || '/notifications'}
-                  className="flex gap-3 text-sm relative active:opacity-70"
-                >
-                  {idx !== visibleEvents.length - 1 && (
-                    <div className="absolute left-[15px] top-9 bottom-[-12px] w-px bg-white/5" />
-                  )}
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-velvet to-velvet-dark border border-gold/20 flex items-center justify-center text-sm shrink-0">
-                    {EVENT_ICONS[e.type] || '✦'}
-                  </div>
-                  <div className="flex-1 pt-0.5 min-w-0">
-                    <p className="text-sm leading-snug truncate">{e.title}</p>
-                    <p className="text-[10px] text-muted mt-0.5 uppercase tracking-wider">
-                      {timeAgo(e.created_at)}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
+        <div className="space-y-2">
+          {academyEvents.length === 0 ? (
+            <div className="glass p-6 text-center text-sm text-muted-foreground">Событий пока нет.</div>
+          ) : academyEvents.map(e => (
+            <Link key={e.id} href={e.link_url || '#'}>
+              <div className="glass p-3 flex items-start gap-3 active:scale-[0.99] transition-transform">
+                <div className="w-10 h-10 rounded-2xl bg-gold/10 border border-gold/20 flex items-center justify-center text-base shrink-0">
+                  {EVENT_ICONS[e.type] || '✦'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm leading-tight">{e.title}</div>
+                  {e.body && <div className="text-xs text-muted-foreground mt-0.5">{e.body}</div>}
+                  <div className="text-[10px] text-muted mt-1 uppercase tracking-wider">{timeAgo(e.created_at)}</div>
+                </div>
+              </div>
+            </Link>
+          ))}
         </div>
       </section>
     </div>
   );
 }
-
-const EVENT_ICONS: Record<string, string> = {
-  big_game_start: '🏟️',
-  player_eliminated: '💀',
-  pet_assigned: '🔗',
-  elite_promoted: '👑',
-  queen_announcement: '👑',
-  pari_created: '💰',
-  pari_resolved: '✓',
-  gm_alert: '⚠️',
-  custom: '📢',
-};
 
 function Stat({ icon, value, label }: { icon: string; value: number; label: string }) {
   return (
