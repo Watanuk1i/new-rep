@@ -186,6 +186,7 @@ export function TopBar() {
             <DrawerLink href="/rules" icon="⚖️" label="Правила" pathname={pathname} />
             <DrawerLink href="/help" icon="❔" label="Помощь" pathname={pathname} />
             <DrawerLink href="/history" icon="🕰️" label="История" pathname={pathname} />
+            <DrawerLink href="/debug" icon="🔧" label="Диагностика БД" pathname={pathname} />
 
             {(role === 'gm' || role === 'queen') && (
               <>
