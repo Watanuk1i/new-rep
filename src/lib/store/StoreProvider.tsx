@@ -11,6 +11,10 @@ import type {
 } from './types';
 
 const AUTH_KEY = 'academy-auth-v4';
+const CACHE_KEY = 'academy-cache-v1';
+// Если меняешь форму State — меняй и CACHE_VERSION, иначе старый кэш сломает рендер.
+const CACHE_VERSION = 1;
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 1 сутки — потом всё равно обновится из БД
 
 interface State {
   participants: Participant[];
@@ -71,12 +75,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const sb = useMemo(() => getSupabase(), []);
   const channelsRef = useRef<any[]>([]);
 
-  // Загрузка авторизации
+  // Загрузка авторизации + восстановление кэша состояния (для мгновенного первого рендера).
+  // После этого UI уже можно рендерить — параллельно начинается свежая загрузка из БД.
   useEffect(() => {
     try {
       const id = localStorage.getItem(AUTH_KEY);
       if (id) setCurrentUserId(id);
     } catch {}
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (cached?.v === CACHE_VERSION && cached?.t && (Date.now() - cached.t) < CACHE_TTL_MS && cached.state) {
+          setState(prev => ({ ...prev, ...cached.state }));
+          // Готовы рендерить — данные есть из кэша. Свежие подтянутся из БД параллельно.
+          setReady(true);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Сохранить state в кэш (debounced через requestIdleCallback / setTimeout).
+  const saveCacheRef = useRef<any>(null);
+  const saveCache = useCallback((s: State) => {
+    if (saveCacheRef.current) clearTimeout(saveCacheRef.current);
+    saveCacheRef.current = setTimeout(() => {
+      try {
+        // Сохраняем только публичные коллекции — notifications/history привязаны к юзеру и легче подгружаются отдельно.
+        const toCache = {
+          participants: s.participants,
+          challenges: s.challenges,
+          pari: s.pari,
+          debts: s.debts,
+          superGames: s.superGames,
+          events: s.events,
+          rumors: s.rumors,
+          content: s.content,
+          room: s.room,
+        };
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ v: CACHE_VERSION, t: Date.now(), state: toCache }));
+      } catch {}
+    }, 500);
   }, []);
 
   // Загрузка данных + realtime подписки
@@ -86,41 +125,45 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setOnline(false);
       return;
     }
-    try {
-      const [
-        parts, ch, pari, debts, sg, events, rumors, content, room
-      ] = await Promise.all([
-        sb.from('participants').select('*').order('created_at', { ascending: true }),
-        sb.from('challenges').select('*').order('created_at', { ascending: false }),
-        sb.from('pari').select('*').order('created_at', { ascending: false }),
-        sb.from('debts').select('*').order('created_at', { ascending: false }),
-        sb.from('super_games').select('*').order('created_at', { ascending: false }),
-        sb.from('events').select('*').order('created_at', { ascending: false }).limit(100),
-        sb.from('rumors').select('*').order('created_at', { ascending: false }),
-        sb.from('content_blocks').select('*').order('sort_order', { ascending: true }),
-        sb.from('room_state').select('*').eq('id', 'academy').maybeSingle(),
-      ]);
+    // Promise.allSettled — один медленный/упавший запрос не блокирует остальные
+    const results = await Promise.allSettled([
+      sb.from('participants').select('*').order('created_at', { ascending: true }),
+      sb.from('challenges').select('*').order('created_at', { ascending: false }),
+      sb.from('pari').select('*').order('created_at', { ascending: false }),
+      sb.from('debts').select('*').order('created_at', { ascending: false }),
+      sb.from('super_games').select('*').order('created_at', { ascending: false }),
+      sb.from('events').select('*').order('created_at', { ascending: false }).limit(100),
+      sb.from('rumors').select('*').order('created_at', { ascending: false }),
+      sb.from('content_blocks').select('*').order('sort_order', { ascending: true }),
+      sb.from('room_state').select('*').eq('id', 'academy').maybeSingle(),
+    ]);
+    const pick = (i: number, fallback: any = []) => {
+      const r = results[i];
+      if (r.status !== 'fulfilled') return fallback;
+      return (r.value as any).data ?? fallback;
+    };
+    let anyOk = results.some(r => r.status === 'fulfilled');
 
-      setState(prev => ({
+    setState(prev => {
+      const next: State = {
         ...prev,
-        participants: parts.data || [],
-        challenges: (ch.data || []) as any,
-        pari: (pari.data || []) as any,
-        debts: (debts.data || []) as any,
-        superGames: (sg.data || []) as any,
-        events: (events.data || []) as any,
-        rumors: (rumors.data || []) as any,
-        content: (content.data || []) as any,
-        room: (room.data as any) || prev.room,
-      }));
-      setOnline(true);
-    } catch (e) {
-      console.error('[store] load failed', e);
-      setOnline(false);
-    } finally {
-      setReady(true);
-    }
-  }, [sb]);
+        participants: pick(0) || prev.participants,
+        challenges: pick(1) || prev.challenges,
+        pari: pick(2) || prev.pari,
+        debts: pick(3) || prev.debts,
+        superGames: pick(4) || prev.superGames,
+        events: pick(5) || prev.events,
+        rumors: pick(6) || prev.rumors,
+        content: pick(7) || prev.content,
+        room: pick(8, null) || prev.room,
+      };
+      // Сохраняем в localStorage для следующего захода
+      saveCache(next);
+      return next;
+    });
+    setOnline(anyOk);
+    setReady(true);
+  }, [sb, saveCache]);
 
   // Загрузка нотификаций для текущего пользователя
   const loadNotifications = useCallback(async () => {
@@ -243,29 +286,38 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [currentUser]);
 
   const login = useCallback(async (username: string, password: string): Promise<boolean> => {
-    if (!sb) return false;
     const u = username.trim().toLowerCase();
-    // Пробуем найти по display_name (lower) или по специальным аккаунтам
-    const { data } = await sb.from('participants').select('*');
-    const p = (data || []).find((x: any) =>
+    // Сначала пробуем найти в уже загруженном state — это мгновенно (из localStorage-кэша или
+    // первой загрузки). Сетевой fetch делаем только если ничего не нашли — например, юзер
+    // вошёл первым на этой машине, кэша ещё нет.
+    let candidate = state.participants.find(x =>
       x.display_name.toLowerCase() === u ||
       (x.id === 'p-gm' && u === 'host') ||
       (x.id === 'p-queen' && u === 'queen')
     );
-    if (!p) return false;
-    // Проверка пароля
-    if (p.password) {
-      if (p.password !== password) return false;
+    if (!candidate && sb) {
+      const { data } = await sb.from('participants').select('*');
+      candidate = (data || []).find((x: any) =>
+        x.display_name.toLowerCase() === u ||
+        (x.id === 'p-gm' && u === 'host') ||
+        (x.id === 'p-queen' && u === 'queen')
+      ) as any;
     }
-    // Иначе — любой пароль для тестов
-    setCurrentUserId(p.id);
-    try { localStorage.setItem(AUTH_KEY, p.id); } catch {}
+    if (!candidate) return false;
+    if (candidate.password) {
+      if (candidate.password !== password) return false;
+    }
+    setCurrentUserId(candidate.id);
+    try { localStorage.setItem(AUTH_KEY, candidate.id); } catch {}
     return true;
-  }, [sb]);
+  }, [sb, state.participants]);
 
   const logout = useCallback(() => {
     setCurrentUserId(null);
-    try { localStorage.removeItem(AUTH_KEY); } catch {}
+    try {
+      localStorage.removeItem(AUTH_KEY);
+      // Кэш state не чистим — он публичный, пригодится при следующем входе
+    } catch {}
     setState(prev => ({ ...prev, notifications: [], history: [] }));
   }, []);
 
