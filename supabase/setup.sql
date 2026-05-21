@@ -196,6 +196,26 @@ ALTER TABLE content_blocks  DISABLE ROW LEVEL SECURITY;
 ALTER TABLE history         DISABLE ROW LEVEL SECURITY;
 
 -- =========================================================
+-- 3.5) GRANTы для anon / authenticated / service_role
+-- =========================================================
+-- ВАЖНО: после DROP+CREATE TABLE автоматические grants Supabase теряются.
+-- Без этого блока SQL Editor (роль postgres) видит данные, а сайт через
+-- publishable key (роль anon) — нет, и /debug рапортует "найдено 0/2".
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
+  TO anon, authenticated, service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public
+  TO anon, authenticated, service_role;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public
+  TO anon, authenticated, service_role;
+
+-- И на всякий случай: будущие таблицы/последовательности тоже
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role;
+
+-- =========================================================
 -- 4) REALTIME publication (создаём если нет, иначе добавляем таблицы)
 -- =========================================================
 DO $$
@@ -248,7 +268,7 @@ INSERT INTO participants (id, display_name, status, balance, reputation, sprite_
 NOTIFY pgrst, 'reload schema';
 
 -- =========================================================
--- ПРОВЕРКА: должно быть 16 строк, в т.ч. p-gm и p-queen
+-- ПРОВЕРКА 1: должно быть 16 строк, в т.ч. p-gm и p-queen
 -- =========================================================
 SELECT
   id,
@@ -260,3 +280,11 @@ FROM participants
 ORDER BY
   CASE status WHEN 'gm' THEN 0 WHEN 'queen' THEN 1 ELSE 2 END,
   id;
+
+-- =========================================================
+-- ПРОВЕРКА 2: у роли anon есть SELECT на participants?
+-- (если has_select = false — сайт ничего читать не сможет)
+-- =========================================================
+SELECT
+  has_table_privilege('anon', 'public.participants', 'SELECT') AS anon_can_select,
+  has_table_privilege('authenticated', 'public.participants', 'SELECT') AS auth_can_select;

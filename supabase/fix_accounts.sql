@@ -33,6 +33,14 @@ INSERT INTO participants (id, display_name, status, balance, reputation, sprite_
 INSERT INTO room_state (id, season, day) VALUES ('academy', 1, 1)
 ON CONFLICT (id) DO NOTHING;
 
+-- 3.5) Дать anon/authenticated явные права читать таблицы
+--      (на случай если они были потеряны)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
+  TO anon, authenticated, service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public
+  TO anon, authenticated, service_role;
+
 -- 4) Сбрасываем PostgREST-кэш схемы
 --    (убирает ошибку "Could not find the table 'public.X' in the schema cache")
 NOTIFY pgrst, 'reload schema';
