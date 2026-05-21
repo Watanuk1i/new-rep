@@ -1,19 +1,17 @@
 -- =====================================================================
--- АКАДЕМИЯ — ПОЛНАЯ УСТАНОВКА БД ЗА ОДИН ПРОГОН
+-- АКАДЕМИЯ — ЕДИНСТВЕННЫЙ SQL-ФАЙЛ ДЛЯ УСТАНОВКИ БД
 -- =====================================================================
--- Запускать в Supabase → SQL Editor целиком, одной кнопкой Run.
--- Что делает:
---  1) ДРОПАЕТ все наши таблицы (если были) — чистый сброс.
---  2) Создаёт схему заново.
---  3) Включает Realtime publication для всех таблиц.
---  4) Засеивает 16 участников с правильными id и паролями + room_state.
---  5) Перезагружает PostgREST schema cache.
--- В конце — SELECT который покажет все 16 участников.
+-- Запускать в Supabase Dashboard → SQL Editor целиком, кнопкой Run.
+-- Делает за один проход:
+--   1. Сбрасывает все наши таблицы и старые артефакты.
+--   2. Создаёт схему заново.
+--   3. Выдаёт права anon/authenticated/service_role.
+--   4. Засеивает 16 участников и room_state.
+--   5. Перезагружает PostgREST schema cache.
+-- В конце два SELECT-а для проверки.
 -- =====================================================================
 
--- =========================================================
 -- 1) ПОЛНЫЙ СБРОС
--- =========================================================
 DROP TABLE IF EXISTS history          CASCADE;
 DROP TABLE IF EXISTS notifications    CASCADE;
 DROP TABLE IF EXISTS rumors           CASCADE;
@@ -25,15 +23,10 @@ DROP TABLE IF EXISTS challenges       CASCADE;
 DROP TABLE IF EXISTS content_blocks   CASCADE;
 DROP TABLE IF EXISTS participants     CASCADE;
 DROP TABLE IF EXISTS room_state       CASCADE;
--- На случай артефактов от очень старой схемы:
 DROP TABLE IF EXISTS characters       CASCADE;
 DROP TABLE IF EXISTS profiles         CASCADE;
 
--- =========================================================
 -- 2) СХЕМА
--- =========================================================
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
 CREATE TABLE room_state (
   id TEXT PRIMARY KEY DEFAULT 'academy',
   season INT NOT NULL DEFAULT 1,
@@ -171,18 +164,7 @@ CREATE TABLE history (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_challenges_status   ON challenges(status);
-CREATE INDEX idx_challenges_creator  ON challenges(creator_id);
-CREATE INDEX idx_challenges_opponent ON challenges(opponent_id);
-CREATE INDEX idx_pari_status         ON pari(status);
-CREATE INDEX idx_debts_status        ON debts(status);
-CREATE INDEX idx_notifications_recipient ON notifications(recipient_id, is_read);
-CREATE INDEX idx_history_participant ON history(participant_id, created_at DESC);
-CREATE INDEX idx_events_created      ON events(created_at DESC);
-
--- =========================================================
--- 3) RLS отключаем (публичный доступ через anon)
--- =========================================================
+-- 3) RLS off, GRANTs on. Это самое важное для anon-доступа с сайта.
 ALTER TABLE room_state      DISABLE ROW LEVEL SECURITY;
 ALTER TABLE participants    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE challenges      DISABLE ROW LEVEL SECURITY;
@@ -195,53 +177,12 @@ ALTER TABLE rumors          DISABLE ROW LEVEL SECURITY;
 ALTER TABLE content_blocks  DISABLE ROW LEVEL SECURITY;
 ALTER TABLE history         DISABLE ROW LEVEL SECURITY;
 
--- =========================================================
--- 3.5) GRANTы для anon / authenticated / service_role
--- =========================================================
--- ВАЖНО: после DROP+CREATE TABLE автоматические grants Supabase теряются.
--- Без этого блока SQL Editor (роль postgres) видит данные, а сайт через
--- publishable key (роль anon) — нет, и /debug рапортует "найдено 0/2".
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public
-  TO anon, authenticated, service_role;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public
-  TO anon, authenticated, service_role;
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public
-  TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES    IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 
--- И на всякий случай: будущие таблицы/последовательности тоже
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role;
-
--- =========================================================
--- 4) REALTIME publication (создаём если нет, иначе добавляем таблицы)
--- =========================================================
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-    CREATE PUBLICATION supabase_realtime FOR TABLE
-      participants, challenges, pari, debts, super_games,
-      events, notifications, rumors, room_state, history, content_blocks;
-  ELSE
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE participants;   EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE challenges;     EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE pari;           EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE debts;          EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE super_games;    EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE events;         EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE notifications;  EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE rumors;         EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE room_state;     EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE history;        EXCEPTION WHEN duplicate_object THEN NULL; END;
-    BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE content_blocks; EXCEPTION WHEN duplicate_object THEN NULL; END;
-  END IF;
-END $$;
-
--- =========================================================
--- 5) ДАННЫЕ
--- =========================================================
+-- 4) ДАННЫЕ
 INSERT INTO room_state (id, season, day) VALUES ('academy', 1, 1);
 
 INSERT INTO participants (id, display_name, status, balance, reputation, sprite_sheet, sprite_y, password, is_registered) VALUES
@@ -262,29 +203,28 @@ INSERT INTO participants (id, display_name, status, balance, reputation, sprite_
   ('p-13',    'Хифуми Ямада',       'player', 500000,     30,    1,  430, NULL, FALSE),
   ('p-14',    'Джунко Эношима',     'player', 1500000,    60,    2,  430, NULL, FALSE);
 
--- =========================================================
--- 6) ПЕРЕЗАГРУЗКА КЭША POSTGREST
--- =========================================================
+-- 5) Перезагрузить PostgREST schema cache
 NOTIFY pgrst, 'reload schema';
 
--- =========================================================
--- ПРОВЕРКА 1: должно быть 16 строк, в т.ч. p-gm и p-queen
--- =========================================================
-SELECT
-  id,
-  display_name,
-  status,
-  COALESCE(password, '(нет — любой пароль)') AS password,
-  is_registered
-FROM participants
-ORDER BY
-  CASE status WHEN 'gm' THEN 0 WHEN 'queen' THEN 1 ELSE 2 END,
-  id;
+-- 6) ПРОВЕРКИ. Должны вернуть:
+--    (a) 16 строк в participants
+--    (b) anon_can_select = true, auth_can_select = true
+--    (c) 2 строки: p-gm и p-queen
+SELECT count(*) AS total_participants FROM participants;
 
--- =========================================================
--- ПРОВЕРКА 2: у роли anon есть SELECT на participants?
--- (если has_select = false — сайт ничего читать не сможет)
--- =========================================================
 SELECT
-  has_table_privilege('anon', 'public.participants', 'SELECT') AS anon_can_select,
+  has_table_privilege('anon',          'public.participants', 'SELECT') AS anon_can_select,
   has_table_privilege('authenticated', 'public.participants', 'SELECT') AS auth_can_select;
+
+SELECT id, display_name, status, password, is_registered
+FROM participants
+WHERE id IN ('p-gm', 'p-queen');
+
+-- =====================================================================
+-- REALTIME (опционально, если нужны live-обновления на сайте):
+--   Открой Supabase → Database → Replication → publication
+--   "supabase_realtime" → нажми Edit → включи галочки на всех таблицах:
+--   participants, challenges, pari, debts, super_games, events,
+--   notifications, rumors, room_state, history, content_blocks.
+-- Без этого сайт всё равно будет работать, просто без живых обновлений.
+-- =====================================================================
