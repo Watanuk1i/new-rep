@@ -17,6 +17,7 @@ const TABS = [
   { key: 'season', label: 'Сезон/День', icon: '📅' },
   { key: 'announce', label: 'Объявления', icon: '📢' },
   { key: 'participants', label: 'Игроки', icon: '👥' },
+  { key: 'accounts', label: 'Аккаунты', icon: '🔑' },
   { key: 'pari', label: 'Пари', icon: '💰' },
   { key: 'super-games', label: 'Супер игры', icon: '🏟️' },
   { key: 'debts', label: 'Долги', icon: '📜' },
@@ -84,6 +85,7 @@ function AdminInner() {
       {tab === 'participants' && (editingParticipant
         ? <EditParticipant id={editingParticipant} onBack={() => setEditingParticipant(null)} />
         : <ParticipantsList onEdit={setEditingParticipant} />)}
+      {tab === 'accounts' && <AccountsTab />}
       {tab === 'pari' && <PariAdmin />}
       {tab === 'super-games' && <SuperGamesAdmin />}
       {tab === 'debts' && <DebtsAdmin />}
@@ -877,6 +879,130 @@ function ContentAdmin() {
             <div className="text-xs text-muted-foreground whitespace-pre-line">{b.body}</div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+
+
+function AccountsTab() {
+  const { state, role } = useStore();
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  // Сортировка: GM сверху, потом Селестия, потом игроки по id
+  const list = [...state.participants].sort((a, b) => {
+    const order = (s: string) => (s === 'gm' ? 0 : s === 'queen' ? 1 : 2);
+    if (order(a.status) !== order(b.status)) return order(a.status) - order(b.status);
+    return a.id.localeCompare(b.id, undefined, { numeric: true });
+  });
+
+  // Логин = что вводить в поле «Имя персонажа» на /login
+  const loginFor = (p: Participant): string => {
+    if (p.id === 'p-gm') return 'host';
+    if (p.id === 'p-queen') return 'queen';
+    return p.display_name;
+  };
+
+  const copy = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(null), 1200);
+    } catch {}
+  };
+
+  if (role !== 'gm') {
+    return (
+      <div className="glass p-6 text-center text-sm text-muted-foreground">
+        🔒 Просмотр учёток доступен только Ведущему (host).
+      </div>
+    );
+  }
+
+  // Проверка целостности — есть ли p-gm и p-queen
+  const hasGm = list.some(p => p.id === 'p-gm');
+  const hasQueen = list.some(p => p.id === 'p-queen');
+  const seedBroken = !hasGm || !hasQueen;
+
+  return (
+    <div className="space-y-3">
+      <div className="glass-strong gold-border p-4">
+        <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-1">🔑 Учётные записи</div>
+        <p className="text-xs text-muted-foreground">
+          Логин — это то, что игрок вводит в поле «Имя персонажа» на странице входа.
+          Для GM — <span className="font-mono text-gold">host</span>, для Селестии —{' '}
+          <span className="font-mono text-gold">queen</span>, для остальных — имя персонажа целиком
+          (например, <span className="font-mono text-gold">Макото Наэги</span>).
+        </p>
+        <p className="text-[11px] text-muted-foreground mt-2">
+          Если у игрока пароль не задан (NULL) — войти можно с <b>любым</b> паролем (включая пустой).
+        </p>
+        <button
+          onClick={() => setRevealed(v => !v)}
+          className={cn('btn-secondary w-full mt-3 text-sm', revealed && 'bg-gold/15 border-gold/50 text-gold')}
+        >
+          {revealed ? '🙈 Скрыть пароли' : '👁️ Показать пароли'}
+        </button>
+      </div>
+
+      {seedBroken && (
+        <div className="glass-strong p-3 border border-red-500/40 bg-red-500/5 space-y-1">
+          <div className="text-xs font-bold text-red-300">⚠ В БД нет p-gm или p-queen</div>
+          <p className="text-[11px] text-muted-foreground">
+            Логины <span className="font-mono">host</span> / <span className="font-mono">queen</span> не сработают
+            пока эти id отсутствуют. Запусти в Supabase → SQL Editor файл{' '}
+            <span className="font-mono text-gold">supabase/fix_accounts.sql</span> — он пересоздаст 16 участников
+            с правильными id и паролями.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {list.map(p => {
+          const login = loginFor(p);
+          const password = p.password ?? '';
+          const hasPassword = !!p.password;
+          return (
+            <div key={p.id} className="glass p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <CharacterIcon participant={p} size="sm" ringless={p.status === 'queen' || p.status === 'gm'} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm truncate">{p.display_name}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {getStatusLabel(p.status)} · {p.id}
+                    {p.is_registered && <span className="ml-1 text-emerald-300">· занят</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[64px_1fr_auto] items-center gap-2 text-xs">
+                <div className="text-[10px] uppercase tracking-widest text-muted">Логин</div>
+                <div className="font-mono text-gold truncate">{login}</div>
+                <button onClick={() => copy(login, `${p.id}-l`)}
+                  className="text-[10px] px-2 py-1 rounded-md bg-card/60 border border-white/8 active:bg-white/5">
+                  {copied === `${p.id}-l` ? '✓' : '⧉'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-[64px_1fr_auto] items-center gap-2 text-xs">
+                <div className="text-[10px] uppercase tracking-widest text-muted">Пароль</div>
+                <div className="font-mono truncate">
+                  {hasPassword
+                    ? (revealed ? <span className="text-gold">{password}</span> : <span className="text-muted">••••••••</span>)
+                    : <span className="text-muted-foreground italic">любой (NULL)</span>}
+                </div>
+                {hasPassword && (
+                  <button onClick={() => copy(password, `${p.id}-p`)}
+                    className="text-[10px] px-2 py-1 rounded-md bg-card/60 border border-white/8 active:bg-white/5">
+                    {copied === `${p.id}-p` ? '✓' : '⧉'}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
