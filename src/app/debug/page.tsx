@@ -2,7 +2,7 @@
 
 // Страница диагностики Supabase. Открой /debug чтобы проверить подключение.
 import { useEffect, useState } from 'react';
-import { getSupabase, isSupabaseConfigured } from '@/lib/supabase/client';
+import { getSupabase } from '@/lib/supabase/client';
 
 interface CheckResult {
   name: string;
@@ -17,28 +17,39 @@ const REQUIRED_TABLES = [
   'rumors', 'content_blocks', 'history',
 ];
 
+interface RawDump {
+  url: string;
+  httpStatus: number | null;
+  httpStatusText: string;
+  body: string;
+  error: string | null;
+}
+
 export default function DebugPage() {
   const [checks, setChecks] = useState<CheckResult[]>([]);
   const [running, setRunning] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<string>('—');
   const [hasSchemaCacheError, setHasSchemaCacheError] = useState(false);
+  const [rawDump, setRawDump] = useState<RawDump | null>(null);
 
   const run = async () => {
     setRunning(true);
     setHasSchemaCacheError(false);
+    setRawDump(null);
     const results: CheckResult[] = [];
     let schemaCacheSeen = false;
 
     // 1. ENV
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    // Извлекаем projectRef из URL — это поможет понять, к тому ли проекту мы цепляемся
     const projectRef = url ? (url.match(/^https:\/\/([a-z0-9]+)\.supabase\.co/i)?.[1] ?? '?') : '';
     results.push({
       name: 'ENV: NEXT_PUBLIC_SUPABASE_URL',
       ok: !!url,
       detail: url ? `${url}  (project: ${projectRef})` : '❌ не задана',
-      hint: !url ? 'Добавь в Vercel → Settings → Environment Variables и сделай Redeploy.' : 'Запоминай этот project ref! SQL надо запускать именно в этом проекте Supabase.',
+      hint: !url
+        ? 'Добавь в Vercel → Settings → Environment Variables и сделай Redeploy.'
+        : 'Запоминай этот project ref! SQL надо запускать именно в этом проекте Supabase.',
     });
     const keyKind = key
       ? (key.startsWith('sb_publishable_') ? 'publishable (новый формат)'
@@ -79,7 +90,7 @@ export default function DebugPage() {
         ok: !error,
         detail: error ? `❌ ${errMsg}` : `✅ ${JSON.stringify(data)}`,
         hint: isSchemaCache
-          ? 'PostgREST кэш не перечитал схему после CREATE TABLE. Запусти в SQL Editor: NOTIFY pgrst, \'reload schema\'; — или Supabase → Settings → API → Restart.'
+          ? "PostgREST кэш не перечитал схему после CREATE TABLE. Запусти в SQL Editor: NOTIFY pgrst, 'reload schema';  — или Supabase → Settings → API → Restart."
           : undefined,
       });
     } catch (e: any) {
@@ -90,7 +101,7 @@ export default function DebugPage() {
       });
     }
 
-    // 4. Проверяем все таблицы
+    // 4. Все таблицы
     for (const t of REQUIRED_TABLES) {
       try {
         const { count, error } = await sb.from(t).select('*', { count: 'exact', head: true });
@@ -110,7 +121,7 @@ export default function DebugPage() {
       }
     }
 
-    // 4.5. Проверка целостности seed-а — есть ли p-gm и p-queen
+    // 4.5. Сид: p-gm и p-queen
     try {
       const { data, error } = await sb.from('participants')
         .select('id, display_name, password, is_registered')
@@ -137,6 +148,37 @@ export default function DebugPage() {
       });
     }
 
+    // 4.6. RAW HTTP-вызов прямо к PostgREST — минуя supabase-js
+    if (url && key) {
+      try {
+        const rawUrl = `${url}/rest/v1/participants?select=id,display_name,status&limit=5`;
+        const resp = await fetch(rawUrl, {
+          method: 'GET',
+          headers: {
+            apikey: key,
+            Authorization: `Bearer ${key}`,
+            Accept: 'application/json',
+          },
+        });
+        const text = await resp.text();
+        setRawDump({
+          url: rawUrl,
+          httpStatus: resp.status,
+          httpStatusText: resp.statusText,
+          body: text,
+          error: null,
+        });
+      } catch (e: any) {
+        setRawDump({
+          url: '',
+          httpStatus: null,
+          httpStatusText: '',
+          body: '',
+          error: e?.message || String(e),
+        });
+      }
+    }
+
     // 5. Realtime
     try {
       const channel = sb.channel('debug-test');
@@ -145,7 +187,6 @@ export default function DebugPage() {
         .subscribe((status) => {
           setRealtimeStatus(status);
         });
-      // отписываемся через 3 сек
       setTimeout(() => sb.removeChannel(channel), 3000);
     } catch (e: any) {
       setRealtimeStatus(`❌ ${e.message}`);
@@ -161,7 +202,7 @@ export default function DebugPage() {
   }, []);
 
   const copy = (text: string) => {
-    try { navigator.clipboard.writeText(text); } catch {}
+    try { navigator.clipboard.writeText(text); } catch { /* noop */ }
   };
 
   return (
@@ -181,12 +222,11 @@ export default function DebugPage() {
         <div className="glass-strong gold-border p-4 space-y-2">
           <div className="font-bold text-sm text-gold">⚠️ Обнаружена ошибка кэша схемы PostgREST</div>
           <p className="text-xs text-muted-foreground">
-            Это самая частая ошибка после запуска миграции. Таблицы созданы, но PostgREST
-            ещё не перечитал схему. Запусти в Supabase → SQL Editor:
+            Таблицы созданы, но PostgREST ещё не перечитал схему. Запусти в Supabase → SQL Editor:
           </p>
           <div className="flex items-center gap-2">
             <code className="flex-1 block p-2 bg-black/40 rounded-md text-[11px] text-gold font-mono select-all">
-              NOTIFY pgrst, 'reload schema';
+              NOTIFY pgrst, &apos;reload schema&apos;;
             </code>
             <button onClick={() => copy("NOTIFY pgrst, 'reload schema';")}
               className="px-3 py-2 rounded-md bg-card/60 border border-white/8 active:bg-white/5 text-xs">⧉</button>
@@ -214,6 +254,47 @@ export default function DebugPage() {
         ))}
       </div>
 
+      <div className="glass p-3 space-y-2">
+        <div className="text-xs font-bold uppercase tracking-widest text-gold/70">
+          🔬 Сырой ответ API (минуя supabase-js)
+        </div>
+        {!rawDump ? (
+          <div className="text-xs text-muted-foreground">— ещё не выполнен</div>
+        ) : rawDump.error ? (
+          <div className="text-xs text-red-300">❌ Сетевая ошибка: {rawDump.error}</div>
+        ) : (
+          <>
+            <div className="text-[10px] text-muted">URL запроса:</div>
+            <code className="block text-[10px] text-gold/90 break-all bg-black/30 p-2 rounded">
+              {rawDump.url}
+            </code>
+            <div className="text-[10px] text-muted">HTTP статус:</div>
+            <code className={
+              'block text-xs font-mono p-2 rounded ' +
+              (rawDump.httpStatus && rawDump.httpStatus >= 200 && rawDump.httpStatus < 300
+                ? 'bg-emerald-500/10 text-emerald-300'
+                : 'bg-red-500/10 text-red-300')
+            }>
+              {rawDump.httpStatus} {rawDump.httpStatusText}
+            </code>
+            <div className="text-[10px] text-muted">Тело ответа (первые 500 символов):</div>
+            <code className="block text-[10px] font-mono break-all bg-black/30 p-2 rounded max-h-48 overflow-auto whitespace-pre-wrap">
+              {rawDump.body.slice(0, 500) || '(пусто)'}
+            </code>
+            <div className="text-[10px] text-muted-foreground leading-relaxed">
+              <b>Что должно быть:</b> HTTP <b>200</b>, тело — JSON-массив с 5 объектами вида{' '}
+              <code className="bg-black/30 px-1 rounded">{'{"id":"p-gm",...}'}</code>.<br />
+              <b>HTTP 200, но тело <code className="bg-black/30 px-1 rounded">[]</code></b> —
+              у роли anon нет прав. Запусти ещё раз setup.sql (там есть GRANT-ы).<br />
+              <b>HTTP 401/403</b> — неверный API-ключ. Проверь Vercel ENV и Redeploy.<br />
+              <b>HTTP 404 / table not found</b> — таблиц нет, setup.sql не применён.<br />
+              <b>HTTP 406 / schema cache</b> — выполни{' '}
+              <code className="bg-black/30 px-1 rounded">NOTIFY pgrst, &apos;reload schema&apos;;</code>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="glass p-3">
         <div className="text-xs font-bold uppercase tracking-widest text-gold/70 mb-1">Realtime статус</div>
         <div className="text-sm font-mono">{realtimeStatus}</div>
@@ -221,8 +302,8 @@ export default function DebugPage() {
           Если в течение нескольких секунд после загрузки увидел <b>SUBSCRIBED</b> — Realtime работает.
           Тестовый канал автоматически отключается через ~3 сек, поэтому в итоге статус становится
           <b> CLOSED</b> — это норма. Плохо если статус <b>CHANNEL_ERROR</b> или сразу <b>CLOSED</b> —
-          тогда Realtime не настроен (Supabase → Database → Replication → publication
-          <code className="mx-1 px-1 bg-black/30 rounded">supabase_realtime</code>).
+          тогда Realtime не настроен (Supabase → Database → Replication → publication{' '}
+          <code className="px-1 bg-black/30 rounded">supabase_realtime</code>).
         </div>
       </div>
 
@@ -234,13 +315,13 @@ export default function DebugPage() {
             <code className="block mt-1 p-1 bg-black/30 rounded text-[10px] break-all">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
             После добавления — Redeploy.
           </li>
-          <li><b>Главный путь починки</b> — открой Supabase → SQL Editor → скопируй и выполни целиком файл
+          <li><b>Главный путь починки</b> — открой Supabase → SQL Editor → скопируй и выполни целиком файл{' '}
             <code className="bg-black/30 px-1 rounded">supabase/setup.sql</code>.
             Это <u>сбросит и заново создаст</u> всю БД с правильными 16 участниками за один прогон.
             После этого все галочки выше должны позеленеть.
           </li>
-          <li>Если ошибка <b>"schema cache"</b> — выполни
-            <code className="bg-black/30 px-1 rounded">NOTIFY pgrst, &apos;reload schema&apos;;</code>
+          <li>Если ошибка <b>&quot;schema cache&quot;</b> — выполни{' '}
+            <code className="bg-black/30 px-1 rounded">NOTIFY pgrst, &apos;reload schema&apos;;</code>{' '}
             или Settings → API → Restart.
           </li>
           <li>Если Realtime <b>CHANNEL_ERROR</b> — Supabase → Database → Replication, добавь все таблицы в publication <code>supabase_realtime</code>.</li>
