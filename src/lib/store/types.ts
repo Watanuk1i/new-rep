@@ -24,7 +24,7 @@ export interface Participant {
   created_at?: string;
 }
 
-export type MiniGameType = 'dice' | 'high_card' | 'roulette' | 'slots' | 'blackjack' | 'bluff_duel' | 'truth_or_bet';
+export type MiniGameType = 'dice' | 'high_card' | 'roulette' | 'slots' | 'blackjack' | 'bluff_duel' | 'truth_or_bet' | 'find_pair' | 'find_joker';
 
 export interface GameChallenge {
   id: string;

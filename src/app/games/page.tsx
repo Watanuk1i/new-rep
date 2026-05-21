@@ -18,6 +18,8 @@ const GAME_LABELS: Record<MiniGameType, { label: string; icon: string }> = {
   blackjack: { label: '21 очко', icon: '🂡' },
   bluff_duel: { label: 'Блеф-дуэль', icon: '🎭' },
   truth_or_bet: { label: 'Правда/ставка', icon: '❓' },
+  find_pair: { label: 'Найди пару', icon: '🃟' },
+  find_joker: { label: 'Найди Джокера', icon: '🎴' },
 };
 
 export default function GamesPage() {
@@ -41,6 +43,11 @@ export default function GamesPage() {
 
   const accept = async (ch: GameChallenge) => {
     if (!currentUser || !sb) return;
+    // Валидация баланса: нельзя принять вызов если денег меньше чем ставка
+    if (currentUser.balance < ch.stake_amount) {
+      alert(`Недостаточно средств: у вас ${currentUser.balance.toLocaleString('ru-RU')} ейн, а ставка ${ch.stake_amount.toLocaleString('ru-RU')}`);
+      return;
+    }
     await sb.from('challenges').update({
       status: 'accepted', opponent_id: currentUser.id,
     }).eq('id', ch.id);
@@ -98,6 +105,7 @@ export default function GamesPage() {
             const creator = state.participants.find(p => p.id === ch.creator_id);
             const gl = GAME_LABELS[ch.game_type];
             const targeted = ch.opponent_id === currentUser?.id;
+            const insufficient = !!currentUser && currentUser.balance < ch.stake_amount;
             return (
               <div key={ch.id} className="glass p-3 flex items-center gap-3">
                 {creator && <CharacterIcon participant={creator} size="md" />}
@@ -111,10 +119,15 @@ export default function GamesPage() {
                     <span>·</span>
                     <Yen amount={ch.stake_amount} className="text-gold" iconClass="w-3 h-3" />
                     {ch.opponent_id === null && <span className="text-emerald-300">· открытый</span>}
+                    {insufficient && <span className="text-red-300">· не хватает баланса</span>}
                   </div>
                 </div>
                 {currentUser ? (
-                  <button onClick={() => accept(ch)} className="btn-primary text-xs px-4" style={{ minHeight: 40 }}>Принять</button>
+                  <button onClick={() => accept(ch)} disabled={insufficient}
+                    className={cn('btn-primary text-xs px-4', insufficient && 'opacity-40 cursor-not-allowed')}
+                    style={{ minHeight: 40 }}>
+                    {insufficient ? 'Мало ейн' : 'Принять'}
+                  </button>
                 ) : (
                   <Link href="/login" className="btn-secondary text-xs px-3" style={{ minHeight: 40 }}>Войти</Link>
                 )}

@@ -18,6 +18,8 @@ const GAMES: { key: MiniGameType; label: string; icon: string }[] = [
   { key: 'blackjack', label: '21 очко', icon: '🂡' },
   { key: 'bluff_duel', label: 'Блеф-дуэль', icon: '🎭' },
   { key: 'truth_or_bet', label: 'Правда/ставка', icon: '❓' },
+  { key: 'find_pair', label: 'Найди пару', icon: '🃟' },
+  { key: 'find_joker', label: 'Найди Джокера', icon: '🎴' },
 ];
 
 export default function CreateGamePage() {
