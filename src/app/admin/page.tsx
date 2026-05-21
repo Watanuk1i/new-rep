@@ -952,9 +952,9 @@ function AccountsTab() {
           <div className="text-xs font-bold text-red-300">⚠ В БД нет p-gm или p-queen</div>
           <p className="text-[11px] text-muted-foreground">
             Логины <span className="font-mono">host</span> / <span className="font-mono">queen</span> не сработают
-            пока эти id отсутствуют. Запусти в Supabase → SQL Editor файл{' '}
-            <span className="font-mono text-gold">supabase/fix_accounts.sql</span> — он пересоздаст 16 участников
-            с правильными id и паролями.
+            пока эти id отсутствуют. Открой Supabase → SQL Editor и запусти целиком файл{' '}
+            <span className="font-mono text-gold">supabase/setup.sql</span> — он пересоздаст всю БД
+            с 16 участниками за один прогон.
           </p>
         </div>
       )}

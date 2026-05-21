@@ -32,11 +32,13 @@ export default function DebugPage() {
     // 1. ENV
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    // Извлекаем projectRef из URL — это поможет понять, к тому ли проекту мы цепляемся
+    const projectRef = url ? (url.match(/^https:\/\/([a-z0-9]+)\.supabase\.co/i)?.[1] ?? '?') : '';
     results.push({
       name: 'ENV: NEXT_PUBLIC_SUPABASE_URL',
       ok: !!url,
-      detail: url ? `${url.slice(0, 50)}` : '❌ не задана',
-      hint: !url ? 'Добавь в Vercel → Settings → Environment Variables и сделай Redeploy.' : undefined,
+      detail: url ? `${url}  (project: ${projectRef})` : '❌ не задана',
+      hint: !url ? 'Добавь в Vercel → Settings → Environment Variables и сделай Redeploy.' : 'Запоминай этот project ref! SQL надо запускать именно в этом проекте Supabase.',
     });
     const keyKind = key
       ? (key.startsWith('sb_publishable_') ? 'publishable (новый формат)'
@@ -124,7 +126,7 @@ export default function DebugPage() {
             ? `✅ оба на месте (логины host / queen)`
             : `❌ найдено ${(data || []).length}/2 — id-шки в БД не совпадают с ожидаемыми`,
         hint: !ok && !error
-          ? 'В Supabase SQL Editor выполни supabase/fix_accounts.sql — он пересоздаст 16 участников с правильными id и паролями.'
+          ? 'В Supabase SQL Editor выполни supabase/setup.sql — он пересоздаст всю БД с 16 участниками за один прогон.'
           : undefined,
       });
     } catch (e: any) {
@@ -216,23 +218,32 @@ export default function DebugPage() {
         <div className="text-xs font-bold uppercase tracking-widest text-gold/70 mb-1">Realtime статус</div>
         <div className="text-sm font-mono">{realtimeStatus}</div>
         <div className="text-[10px] text-muted-foreground mt-1">
-          Должно быть: SUBSCRIBED. Если CLOSED или CHANNEL_ERROR — Realtime не включён в Supabase
-          (Database → Replication → publication <code>supabase_realtime</code>).
+          Если в течение нескольких секунд после загрузки увидел <b>SUBSCRIBED</b> — Realtime работает.
+          Тестовый канал автоматически отключается через ~3 сек, поэтому в итоге статус становится
+          <b> CLOSED</b> — это норма. Плохо если статус <b>CHANNEL_ERROR</b> или сразу <b>CLOSED</b> —
+          тогда Realtime не настроен (Supabase → Database → Replication → publication
+          <code className="mx-1 px-1 bg-black/30 rounded">supabase_realtime</code>).
         </div>
       </div>
 
       <div className="glass p-4 space-y-2">
         <div className="text-xs font-bold uppercase tracking-widest text-gold/70">Если что-то не работает</div>
-        <ol className="text-xs text-muted-foreground space-y-1 list-decimal pl-4">
+        <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal pl-4">
           <li>В Vercel Settings → Environment Variables проверь:
             <code className="block mt-1 p-1 bg-black/30 rounded text-[10px] break-all">NEXT_PUBLIC_SUPABASE_URL</code>
             <code className="block mt-1 p-1 bg-black/30 rounded text-[10px] break-all">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
             После добавления — Redeploy.
           </li>
-          <li>Если таблиц нет — открой Supabase → SQL Editor → выполни <code className="bg-black/30 px-1 rounded">supabase/migrations/002_full_schema.sql</code></li>
-          <li>Если логин host/queen не пускает — выполни <code className="bg-black/30 px-1 rounded">supabase/fix_accounts.sql</code></li>
-          <li>Если Realtime CLOSED — Supabase → Database → Replication, добавь все таблицы в publication <code>supabase_realtime</code>.</li>
-          <li>Если ошибка "schema cache" — выполни <code className="bg-black/30 px-1 rounded">NOTIFY pgrst, 'reload schema';</code> или Restart в Settings → API.</li>
+          <li><b>Главный путь починки</b> — открой Supabase → SQL Editor → скопируй и выполни целиком файл
+            <code className="bg-black/30 px-1 rounded">supabase/setup.sql</code>.
+            Это <u>сбросит и заново создаст</u> всю БД с правильными 16 участниками за один прогон.
+            После этого все галочки выше должны позеленеть.
+          </li>
+          <li>Если ошибка <b>"schema cache"</b> — выполни
+            <code className="bg-black/30 px-1 rounded">NOTIFY pgrst, &apos;reload schema&apos;;</code>
+            или Settings → API → Restart.
+          </li>
+          <li>Если Realtime <b>CHANNEL_ERROR</b> — Supabase → Database → Replication, добавь все таблицы в publication <code>supabase_realtime</code>.</li>
         </ol>
       </div>
     </div>
