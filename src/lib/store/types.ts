@@ -102,7 +102,7 @@ export interface SuperGame {
   entry_fee: number;
   bank: number;
   winner_id?: string | null;
-  state: MinorityState | NineBulletsState | Record<string, any>;
+  state: MinorityState | NineBulletsState | RoyalRouletteState | Record<string, any>;
   created_at: string;
 }
 
@@ -185,6 +185,43 @@ export interface NineBulletsState {
     | 'finished';
   // история ролей: чтобы не выбирать стрелка/заряжающего два раунда подряд
   role_history: { round: number; loader_id: string; shooter_id: string; sitters_ids: string[] }[];
+}
+
+// ===== Королевская рулетка (4-я Большая игра) =====
+export type RouletteBet = 'safe' | 'risky' | 'royal';
+export type RouletteSector = 'safe' | 'risky' | 'royal' | 'tax' | 'crown';
+
+export interface RoyalRouletteRound {
+  number: number;                                // 1..5
+  status: 'discussion' | 'choosing' | 'spinning' | 'resolved';
+  bets: Record<string, RouletteBet>;             // participantId → bet
+  celestia_viewed_player_id?: string | null;     // кого Селестия посмотрела «Королевским взглядом»
+  celestia_view_seen_bet?: RouletteBet | null;   // что именно она увидела (видно только Селестии)
+  result_sector?: RouletteSector | null;
+  result_index?: number | null;                  // индекс сектора 0..11 — для синхронизации анимации
+  deltas?: Record<string, number>;               // изменение баланса игрока за раунд
+  treasury_delta?: number;
+  resolved_at?: string;
+}
+
+export interface RoyalRouletteState {
+  current_round: number;                          // 1..5
+  rounds: RoyalRouletteRound[];                   // длина = current_round
+  celestia_id: string;                            // обычно 'p-queen'
+  celestia_privilege_used: boolean;
+  fee_paid: Record<string, number>;               // взносы на старте
+  net_profit: Record<string, number>;             // чистая прибыль за все раунды
+  status:
+    | 'scheduled'
+    | 'collecting_stakes'
+    | 'round_discussion'
+    | 'choosing_bets'
+    | 'spinning'
+    | 'round_result'
+    | 'finishing'
+    | 'finished'
+    | 'cancelled';
+  winner_id?: string | null;
 }
 
 export interface AcademyEvent {

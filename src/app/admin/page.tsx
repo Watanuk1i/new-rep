@@ -534,6 +534,7 @@ function SuperGamesAdmin() {
   return (
     <div className="space-y-3">
       <CardShipCreator />
+      <RoyalRouletteCreator />
 
       <button onClick={() => setCreating(!creating)} className="btn-primary w-full">
         {creating ? '✕ Отмена' : '+ Создать Супер игру'}
@@ -1328,6 +1329,206 @@ function CardShipCreator() {
             <button onClick={() => setOpen(false)} className="btn-secondary">Отмена</button>
             <button onClick={create} disabled={busy} className={cn('btn-primary', busy && 'opacity-50')}>
               {busy ? '...' : '🎴 Создать'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// =====================================================================
+// КОРОЛЕВСКАЯ РУЛЕТКА — создание Большой игры
+// =====================================================================
+// Селестия (queen) добавляется автоматически. Ведущий выбирает ровно 4
+// обычных игроков. Состояние полностью хранится в super_games.state.
+// Взносы списываются позже на странице игры (блок «Входные ставки»).
+
+const RR_PLAYERS_COUNT = 4;
+
+function RoyalRouletteCreator() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const celestia = state.participants.find(p => p.id === 'p-queen');
+  // Селестию из выбора исключаем — она всегда сама.
+  const eligible = state.participants.filter(p =>
+    isPlayer(p) && p.is_active && p.id !== 'p-queen'
+  );
+
+  const togglePart = (pid: string) => {
+    const next = new Set(selected);
+    if (next.has(pid)) {
+      next.delete(pid);
+    } else {
+      if (next.size >= RR_PLAYERS_COUNT) return; // лимит ровно 4
+      next.add(pid);
+    }
+    setSelected(next);
+  };
+
+  const create = async () => {
+    setError(null);
+    if (!celestia) {
+      setError('Не найден аккаунт Селестии (p-queen).');
+      return;
+    }
+    if (selected.size !== RR_PLAYERS_COUNT) {
+      setError(`Нужно ровно ${RR_PLAYERS_COUNT} игрока. Сейчас выбрано: ${selected.size}.`);
+      return;
+    }
+    if (!sb) return;
+    setBusy(true);
+
+    const sgId = uid('sg');
+    const ids = ['p-queen', ...Array.from(selected)];
+
+    const initialState = {
+      current_round: 0,
+      rounds: [],
+      celestia_id: 'p-queen',
+      celestia_privilege_used: false,
+      fee_paid: {},
+      net_profit: {},
+      status: 'scheduled',
+      winner_id: null,
+    };
+
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: 'Королевская рулетка',
+      type: 'royal_roulette',
+      description: 'Личная игра Селестии. 5 раундов рулетки, тайные ставки.',
+      rules:
+        'Селестия + 4 игрока. 5 раундов.\n' +
+        'Каждый раунд: тайный выбор ставки (Безопасная / Рискованная / Королевская) → рулетка.\n' +
+        'Селестия не может выбрать Безопасную и один раз за игру может посмотреть выбор одного игрока («Королевский взгляд»).\n' +
+        'Победитель — у кого наибольшая чистая прибыль за 5 раундов. Забирает банк.',
+      stakes: 'Взнос: 250k от игрока, 1M от Селестии · банк 2 000 000',
+      status: 'scheduled',
+      participant_ids: ids,
+      spectator_bets_enabled: false,
+      entry_fee: 250_000,
+      bank: 0,
+      state: initialState,
+    });
+
+    await sb.from('notifications').insert(
+      Array.from(selected).map(pid => ({
+        id: uid('n'),
+        recipient_id: pid,
+        type: 'big_game_invite',
+        title: 'Королевская рулетка',
+        body: 'Селестия лично пригласила вас. Взнос 250 000.',
+        link_url: `/super-games/${sgId}`,
+        is_read: false,
+      })),
+    );
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'big_game_start',
+      title: 'Селестия открывает «Королевскую рулетку»',
+      body: 'Приглашены 4 игрока. Банк сформируется после сбора взносов.',
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+    setOpen(false);
+    setSelected(new Set());
+  };
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">♛</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Большая игра</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            Королевская рулетка
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Селестия + 4 игрока · 5 раундов · банк 2 000 000
+          </div>
+        </div>
+      </div>
+
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="btn-primary w-full">
+          + Создать Королевскую рулетку
+        </button>
+      ) : (
+        <div className="space-y-3 animate-slide-down">
+          {celestia && (
+            <div className="flex items-center gap-2 p-2 rounded-xl bg-gold/5 border border-gold/30">
+              <CharacterIcon participant={celestia} size="xs" ringless />
+              <div className="flex-1 text-sm">
+                <div className="font-bold">{celestia.display_name}</div>
+                <div className="text-[10px] text-gold/80">Куратор + игрок · взнос 1 000 000</div>
+              </div>
+              <span className="text-[10px] text-gold/80">авто</span>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gold">
+                Выберите 4 игрока ({selected.size}/{RR_PLAYERS_COUNT})
+              </label>
+            </div>
+            <div className="text-[10px] text-muted mb-2">
+              Можно выбрать кого угодно: победителей прошлых игр, самого богатого, должника или того, кто заинтересовал Селестию.
+            </div>
+            <div className="max-h-56 overflow-y-auto space-y-1 glass p-2">
+              {eligible.map(p => {
+                const isSelected = selected.has(p.id);
+                const limitReached = !isSelected && selected.size >= RR_PLAYERS_COUNT;
+                return (
+                  <label
+                    key={p.id}
+                    className={cn(
+                      'flex items-center gap-2 p-1.5 rounded-lg cursor-pointer active:bg-white/5',
+                      limitReached && 'opacity-40 cursor-not-allowed',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={limitReached}
+                      onChange={() => togglePart(p.id)}
+                      className="w-4 h-4 accent-gold"
+                    />
+                    <CharacterIcon participant={p} size="xs" ringless />
+                    <span className="text-sm flex-1">{p.display_name}</span>
+                    <Yen amount={p.balance} className="text-[10px] text-muted-foreground" iconClass="w-3 h-3" />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="text-[10px] text-muted leading-relaxed bg-white/5 rounded-lg px-3 py-2 border border-white/5">
+            После создания игра будет в статусе «запланирована». Сбор взносов и старт раунда 1 — на странице игры.
+          </div>
+
+          {error && (
+            <div className="glass crimson-border p-2 text-xs text-red-300 text-center">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setOpen(false)} className="btn-secondary">Отмена</button>
+            <button
+              onClick={create}
+              disabled={busy || selected.size !== RR_PLAYERS_COUNT}
+              className={cn('btn-primary', busy && 'opacity-50')}
+            >
+              {busy ? '...' : '♛ Создать'}
             </button>
           </div>
         </div>

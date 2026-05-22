@@ -31,3 +31,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# editors / IDE
+.vscode/
+.idea/
+*.swp
+
+# git internal scratch
+.git/COMMIT_MSG.tmp
