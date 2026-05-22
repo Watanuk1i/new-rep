@@ -102,7 +102,7 @@ export interface SuperGame {
   entry_fee: number;
   bank: number;
   winner_id?: string | null;
-  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | Record<string, any>;
+  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | DebtTowerState | Record<string, any>;
   created_at: string;
 }
 
@@ -277,6 +277,54 @@ export interface ContrabandState {
     | 'finished'
     | 'cancelled';
   winner_team?: ContrabandTeam | 'draw' | null;
+}
+
+// ===== Долговая башня Мондо (6-я Большая игра) =====
+export type DoorChoice = 'payment' | 'risk' | 'debt';
+export type RiskResult = 'success' | 'fail';
+
+export interface DebtTowerChoice {
+  player_id: string;
+  choice: DoorChoice;
+  /** Заполняется только после раскрытия этажа. */
+  risk_result?: RiskResult | null;
+  money_delta?: number;
+  debt_created?: number;
+  debt_id?: string | null;
+}
+
+export interface DebtTowerFloor {
+  number: number;                              // 1..5
+  status: 'selection' | 'revealed' | 'resolved';
+  choices: Record<string, DebtTowerChoice>;    // playerId → choice
+  resolved_at?: string;
+}
+
+export interface DebtTowerPlayerState {
+  total_profit: number;
+  total_loss: number;
+  total_debt: number;
+  debt_choice_count: number;
+  clean_result: number;
+}
+
+export interface DebtTowerState {
+  current_floor: number;                       // 0..5
+  total_floors: number;                        // = 5
+  floors: DebtTowerFloor[];                    // длина = current_floor
+  fee_paid: Record<string, number>;
+  scores: Record<string, DebtTowerPlayerState>;
+  status:
+    | 'scheduled'
+    | 'collecting_stakes'
+    | 'floor_selection'
+    | 'floor_reveal'
+    | 'floor_result'
+    | 'finishing'
+    | 'finished'
+    | 'cancelled';
+  winner_id?: string | null;
+  winner_is_candidate_for_elite?: boolean;
 }
 
 export interface AcademyEvent {

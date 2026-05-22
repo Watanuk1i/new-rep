@@ -536,6 +536,7 @@ function SuperGamesAdmin() {
       <CardShipCreator />
       <RoyalRouletteCreator />
       <ContrabandCreator />
+      <DebtTowerCreator />
 
       <button onClick={() => setCreating(!creating)} className="btn-primary w-full">
         {creating ? '✕ Отмена' : '+ Создать Супер игру'}
@@ -1714,6 +1715,216 @@ function ContrabandCreator() {
               className={cn('btn-primary', busy && 'opacity-50')}
             >
               {busy ? '...' : '💼 Создать'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// =====================================================================
+// ДОЛГОВАЯ БАШНЯ МОНДО — создание Большой игры
+// =====================================================================
+// Куратор — Мондо (p-11), наблюдатель — Селестия. Оба не участвуют как
+// игроки. Ведущий выбирает 4–8 участников. Состояние в super_games.state.
+
+const DEBT_TOWER_MIN_PLAYERS = 4;
+const DEBT_TOWER_MAX_PLAYERS = 8;
+
+function DebtTowerCreator() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const mondo = state.participants.find(p => p.id === 'p-11');
+  const queen = state.participants.find(p => p.id === 'p-queen');
+
+  // Кандидаты: все активные игроки, кроме Мондо и Селестии (они не играют).
+  const eligible = state.participants.filter(p =>
+    isPlayer(p) && p.is_active && p.id !== 'p-11' && p.id !== 'p-queen'
+  );
+
+  const togglePart = (pid: string) => {
+    const next = new Set(selected);
+    if (next.has(pid)) {
+      next.delete(pid);
+    } else {
+      if (next.size >= DEBT_TOWER_MAX_PLAYERS) return;
+      next.add(pid);
+    }
+    setSelected(next);
+  };
+
+  const create = async () => {
+    setError(null);
+    if (selected.size < DEBT_TOWER_MIN_PLAYERS) {
+      setError(`Нужно от ${DEBT_TOWER_MIN_PLAYERS} до ${DEBT_TOWER_MAX_PLAYERS} игроков. Сейчас выбрано: ${selected.size}.`);
+      return;
+    }
+    if (!sb) return;
+    setBusy(true);
+
+    const sgId = uid('sg');
+    const ids = Array.from(selected);
+
+    const initialState = {
+      current_floor: 0,
+      total_floors: 5,
+      floors: [],
+      fee_paid: {},
+      scores: {},
+      status: 'scheduled',
+      winner_id: null,
+      winner_is_candidate_for_elite: false,
+    };
+
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: 'Долговая башня Мондо',
+      type: 'debt_tower',
+      description: 'Личная игра Мондо. 5 этажей, 3 двери: оплата, риск, долг.',
+      rules:
+        'Куратор — Мондо, наблюдатель — Селестия. 4–8 игроков.\n' +
+        'Взнос: 150 000 в банк. 5 этажей. На каждом — тайный выбор двери:\n' +
+        '— Оплата: −50k и пройти этаж.\n' +
+        '— Риск: 50/50 → +150k или −150k.\n' +
+        '— Долг: сейчас 0, создаётся долг к Казне. 1-й раз 100k, далее 200k / 300k / 400k / 500k. Взыскатель — Мондо.\n' +
+        'Победитель = максимальный чистый результат (прибыль − потери − долги). Забирает банк и получает статус «Кандидат в Элиту». Повышение до Элиты — отдельной кнопкой.',
+      stakes: 'Взнос: 150 000 от каждого. Победитель забирает банк.',
+      status: 'scheduled',
+      participant_ids: ids,
+      spectator_bets_enabled: false,
+      entry_fee: 150_000,
+      bank: 0,
+      state: initialState,
+    });
+
+    await sb.from('notifications').insert(
+      ids.map(pid => ({
+        id: uid('n'),
+        recipient_id: pid,
+        type: 'big_game_invite',
+        title: 'Долговая башня Мондо',
+        body: 'Мондо собирает игроков. Взнос 150 000.',
+        link_url: `/super-games/${sgId}`,
+        is_read: false,
+      })),
+    );
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'big_game_start',
+      title: 'Мондо открывает «Долговую башню»',
+      body: `Игроков: ${ids.length}. Этажей: 5.`,
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+    setOpen(false);
+    setSelected(new Set());
+  };
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">🏛️</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Большая игра</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            Долговая башня Мондо
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Куратор — Мондо · 4–8 игроков · 5 этажей · взнос 150 000
+          </div>
+        </div>
+      </div>
+
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="btn-primary w-full">
+          + Создать Долговую башню
+        </button>
+      ) : (
+        <div className="space-y-3 animate-slide-down">
+          <div className="grid grid-cols-2 gap-2">
+            {mondo && (
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-gold/5 border border-gold/30">
+                <CharacterIcon participant={mondo} size="xs" ringless />
+                <div className="flex-1 text-xs">
+                  <div className="font-bold">{mondo.display_name}</div>
+                  <div className="text-[10px] text-gold/80">Куратор · взыскатель</div>
+                </div>
+              </div>
+            )}
+            {queen && (
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-card/40 border border-white/8">
+                <CharacterIcon participant={queen} size="xs" ringless />
+                <div className="flex-1 text-xs">
+                  <div className="font-bold">{queen.display_name}</div>
+                  <div className="text-[10px] text-muted-foreground">Наблюдатель</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gold">
+                Выберите 4–8 игроков ({selected.size})
+              </label>
+            </div>
+            <div className="text-[10px] text-muted mb-2">
+              Мондо и Селестия не участвуют.
+            </div>
+            <div className="max-h-56 overflow-y-auto space-y-1 glass p-2">
+              {eligible.map(p => {
+                const isSelected = selected.has(p.id);
+                const limitReached = !isSelected && selected.size >= DEBT_TOWER_MAX_PLAYERS;
+                return (
+                  <label
+                    key={p.id}
+                    className={cn(
+                      'flex items-center gap-2 p-1.5 rounded-lg cursor-pointer active:bg-white/5',
+                      limitReached && 'opacity-40 cursor-not-allowed',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={limitReached}
+                      onChange={() => togglePart(p.id)}
+                      className="w-4 h-4 accent-gold"
+                    />
+                    <CharacterIcon participant={p} size="xs" ringless />
+                    <span className="text-sm flex-1">{p.display_name}</span>
+                    <Yen amount={p.balance} className="text-[10px] text-muted-foreground" iconClass="w-3 h-3" />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="text-[10px] text-muted leading-relaxed bg-white/5 rounded-lg px-3 py-2 border border-white/5">
+            Долги создаются автоматически в системе долгов: кредитор — Казна, в комментарии помечено «взыскатель Мондо». Мондо найдёт их во вкладке Долгов админки.
+          </div>
+
+          {error && (
+            <div className="glass crimson-border p-2 text-xs text-red-300 text-center">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setOpen(false)} className="btn-secondary">Отмена</button>
+            <button
+              onClick={create}
+              disabled={busy || selected.size < DEBT_TOWER_MIN_PLAYERS}
+              className={cn('btn-primary', busy && 'opacity-50')}
+            >
+              {busy ? '...' : '🏛️ Создать'}
             </button>
           </div>
         </div>
