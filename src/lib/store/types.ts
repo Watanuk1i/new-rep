@@ -1,6 +1,6 @@
 // Типы для Supabase-стора. Совпадают с колонками таблиц БД.
 
-export type ParticipantStatus = 'player' | 'pet' | 'master' | 'elite' | 'queen' | 'gm' | 'collector';
+export type ParticipantStatus = 'player' | 'pet' | 'master' | 'elite' | 'queen' | 'gm' | 'collector' | 'treasury';
 export type Role = 'guest' | 'player' | 'queen' | 'gm' | 'collector';
 
 export interface Participant {
@@ -99,7 +99,92 @@ export interface SuperGame {
   participant_ids: string[];
   starts_at?: string | null;
   spectator_bets_enabled: boolean;
+  entry_fee: number;
+  bank: number;
+  winner_id?: string | null;
+  state: MinorityState | NineBulletsState | Record<string, any>;
   created_at: string;
+}
+
+// ===== Правило меньшинства =====
+export interface MinorityRound {
+  number: number;
+  asked_id: string | null;
+  started_at: string;
+  duration_sec: number;
+  votes: Record<string, 'yes' | 'no'>;
+  status: 'open' | 'closed';
+}
+export interface MinorityHistoryEntry {
+  number: number;
+  asked_id: string | null;
+  votes: Record<string, 'yes' | 'no'>;
+  minority: 'yes' | 'no' | 'tie';
+  eliminated: string[];
+  penalties: Record<string, number>; // кто и сколько доп. внёс в банк за неучастие
+}
+export interface MinoritySpectatorBet {
+  id: string;
+  spectator_id: string;
+  on_id: string;
+  amount: number;
+  created_at: number;
+}
+export interface MinorityState {
+  alive_ids: string[];
+  fee_paid: Record<string, number>;
+  round: MinorityRound | null;
+  history: MinorityHistoryEntry[];
+  spectator_bets: MinoritySpectatorBet[];
+}
+
+// ===== Комната девяти патронов =====
+export type Bullet = 'red' | 'blue';
+export type Occupant = string | 'dummy' | null; // id игрока, 'dummy' (манекен), либо null до аукциона
+
+export interface NineBulletsBid {
+  seat: number;     // 1..9
+  amount: number;   // 0..100000
+}
+export interface NineBulletsShot {
+  seat: number;          // 1..9
+  bullet: Bullet;
+  target: Occupant;
+  delta_shooter: number;
+  delta_target: number;  // 0 если манекен (вместо манекена — Казна)
+  delta_treasury: number;
+}
+export interface NineBulletsRound {
+  n: number;                      // 1..3
+  loader_id: string;
+  shooter_id: string;
+  sitters_ids: string[];          // 5 игроков
+  chamber: Bullet[];              // 9 элементов, после зарядки. Скрывать в UI до фазы выстрелов.
+  start_pos: number;              // 0..8
+  bids: Record<string, NineBulletsBid>;
+  auction_status: 'pending' | 'open' | 'resolved';
+  seats: { idx: number; occupant: Occupant; bid?: number }[];  // 9 мест, idx=1..9
+  shooter_swap: { a: number; b: number; paid: boolean } | { skipped: true } | null;
+  shots: NineBulletsShot[];
+  shots_revealed: number;         // 0..9
+  hits_on_sitters: number;        // итог раунда
+  loader_payout: number;          // итог раунда (отриц = штраф)
+  status: 'role_selection' | 'loading' | 'seat_auction' | 'shooter_swap' | 'shooting' | 'round_result';
+}
+export interface NineBulletsState {
+  current_round: number;          // 1..3
+  rounds: NineBulletsRound[];     // длина = current_round (или 3 если игра finished)
+  status:
+    | 'scheduled'
+    | 'role_selection'
+    | 'loading'
+    | 'seat_auction'
+    | 'shooter_swap'
+    | 'shooting'
+    | 'round_result'
+    | 'finished';
+  // история ролей: чтобы не выбирать стрелка/заряжающего два раунда подряд
+  role_history: { round: number; loader_id: string; shooter_id: string; sitters_ids: string[] }[];
 }
 
 export interface AcademyEvent {

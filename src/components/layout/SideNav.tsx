@@ -42,7 +42,7 @@ export function SideNav() {
           <div className="flex-1 min-w-0">
             <div className="font-bold text-sm truncate">{currentUser.display_name}</div>
             <div className="text-[10px] text-muted-foreground">{getStatusLabel(currentUser.status)}</div>
-            {currentUser.status !== 'gm' && (
+            {currentUser.status !== 'gm' && currentUser.status !== 'treasury' && (
               <Yen amount={currentUser.balance} className="text-xs text-gold mt-0.5" />
             )}
           </div>

@@ -106,6 +106,10 @@ CREATE TABLE super_games (
   participant_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
   starts_at TEXT,
   spectator_bets_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  entry_fee BIGINT NOT NULL DEFAULT 100000,
+  bank BIGINT NOT NULL DEFAULT 0,
+  winner_id TEXT REFERENCES participants(id) ON DELETE SET NULL,
+  state JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -186,8 +190,9 @@ GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role
 INSERT INTO room_state (id, season, day) VALUES ('academy', 1, 1);
 
 INSERT INTO participants (id, display_name, status, balance, reputation, sprite_sheet, sprite_y, password, is_registered) VALUES
-  ('p-gm',    'Монокума',           'gm',     999999999, 100, NULL, NULL, 'host_academy_2026',   TRUE),
-  ('p-queen', 'Селестия Люденберг', 'queen',  9500000,    95,    1,    0, 'queen_celestia_2026', TRUE),
+  ('p-gm',       'Монокума',           'gm',       999999999, 100, NULL, NULL, 'host_academy_2026',   TRUE),
+  ('p-treasury', 'Казна студсовета',   'treasury', 50000000,  0,   NULL, NULL, NULL,                  FALSE),
+  ('p-queen',    'Селестия Люденберг', 'queen',    9500000,   95,  1,    0,    'queen_celestia_2026', TRUE),
   ('p-1',     'Макото Наэги',       'player', 1000000,    60,    1,   86, NULL, FALSE),
   ('p-2',     'Кёко Киригири',      'player', 1500000,    70,    2,   86, NULL, FALSE),
   ('p-3',     'Бьякуя Тогами',      'player', 2000000,    80,    3,   86, NULL, FALSE),
@@ -202,6 +207,103 @@ INSERT INTO participants (id, display_name, status, balance, reputation, sprite_
   ('p-12',    'Киётака Ишимару',    'player', 1050000,    65,    3,  344, NULL, FALSE),
   ('p-13',    'Хифуми Ямада',       'player', 500000,     30,    1,  430, NULL, FALSE),
   ('p-14',    'Джунко Эношима',     'player', 1500000,    60,    2,  430, NULL, FALSE);
+
+-- ===== RPC ФУНКЦИИ ДЛЯ ИГР И ТРАНЗАКЦИЙ =====
+
+-- apply_transfer: атомарный перевод между двумя участниками
+-- При нехватке средств у плательщика автоматически создаётся запись в debts
+CREATE OR REPLACE FUNCTION apply_transfer(
+  p_from   TEXT,
+  p_to     TEXT,
+  p_amount BIGINT,
+  p_reason TEXT,
+  p_link   TEXT DEFAULT NULL
+) RETURNS TEXT
+LANGUAGE plpgsql
+AS $func$
+DECLARE
+  from_balance BIGINT;
+  debt_id      TEXT;
+  rand_suffix  TEXT;
+BEGIN
+  IF p_amount <= 0 THEN RETURN ''; END IF;
+  IF p_from = p_to THEN RETURN ''; END IF;
+
+  UPDATE participants SET balance = balance - p_amount
+   WHERE id = p_from RETURNING balance INTO from_balance;
+  IF from_balance IS NULL THEN
+    RAISE EXCEPTION 'apply_transfer: участник % не найден', p_from;
+  END IF;
+
+  UPDATE participants SET balance = balance + p_amount WHERE id = p_to;
+
+  IF from_balance < 0 THEN
+    rand_suffix := substring(md5(random()::text || clock_timestamp()::text), 1, 8);
+    debt_id := 'd-' || extract(epoch from clock_timestamp())::bigint || '-' || rand_suffix;
+    INSERT INTO debts (id, debtor_id, creditor_id, amount, description, due_day, status, initiator)
+    VALUES (debt_id, p_from, p_to, -from_balance, p_reason, 1, 'active', 'creditor');
+  END IF;
+
+  INSERT INTO history (id, participant_id, action, description, amount, link_url) VALUES
+    ('h-' || extract(epoch from clock_timestamp())::bigint || '-' || substring(md5(random()::text), 1, 6),
+     p_from, 'tx_out', p_reason, -p_amount, p_link),
+    ('h-' || extract(epoch from clock_timestamp())::bigint || '-' || substring(md5(random()::text), 1, 8),
+     p_to,   'tx_in',  p_reason,  p_amount, p_link);
+
+  RETURN COALESCE(debt_id, '');
+END;
+$func$;
+
+-- cast_minority_vote: атомарный голос в правиле меньшинства
+CREATE OR REPLACE FUNCTION cast_minority_vote(
+  p_game_id TEXT, p_voter_id TEXT, p_choice TEXT
+) RETURNS BOOLEAN
+LANGUAGE plpgsql
+AS $func$
+DECLARE affected INT;
+BEGIN
+  IF p_choice NOT IN ('yes','no') THEN
+    RAISE EXCEPTION 'cast_minority_vote: choice должно быть yes или no';
+  END IF;
+  UPDATE super_games
+     SET state = jsonb_set(state, ARRAY['round','votes',p_voter_id], to_jsonb(p_choice), true)
+   WHERE id = p_game_id AND status = 'live'
+     AND state->'round'->>'status' = 'open'
+     AND COALESCE(state->'round'->'votes' ? p_voter_id, FALSE) = FALSE;
+  GET DIAGNOSTICS affected = ROW_COUNT;
+  RETURN affected > 0;
+END;
+$func$;
+
+-- place_seat_bid: атомарная ставка в слепом аукционе «Комнаты девяти патронов»
+CREATE OR REPLACE FUNCTION place_seat_bid(
+  p_game_id TEXT, p_round_idx INT, p_bidder_id TEXT, p_seat INT, p_amount BIGINT
+) RETURNS BOOLEAN
+LANGUAGE plpgsql
+AS $func$
+DECLARE affected INT;
+BEGIN
+  IF p_seat < 1 OR p_seat > 9 THEN RAISE EXCEPTION 'seat должен быть 1..9'; END IF;
+  IF p_amount < 0 OR p_amount > 100000 THEN RAISE EXCEPTION 'amount должен быть 0..100000'; END IF;
+  UPDATE super_games
+     SET state = jsonb_set(
+       state,
+       ARRAY['rounds', p_round_idx::text, 'bids', p_bidder_id],
+       jsonb_build_object('seat', p_seat, 'amount', p_amount),
+       true
+     )
+   WHERE id = p_game_id AND status = 'live'
+     AND state->'rounds'->p_round_idx->>'auction_status' = 'open'
+     AND COALESCE(state->'rounds'->p_round_idx->'sitters_ids' ? p_bidder_id, FALSE) = TRUE
+     AND COALESCE(state->'rounds'->p_round_idx->'bids' ? p_bidder_id, FALSE) = FALSE;
+  GET DIAGNOSTICS affected = ROW_COUNT;
+  RETURN affected > 0;
+END;
+$func$;
+
+GRANT EXECUTE ON FUNCTION apply_transfer(TEXT,TEXT,BIGINT,TEXT,TEXT)    TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION cast_minority_vote(TEXT,TEXT,TEXT)            TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION place_seat_bid(TEXT,INT,TEXT,INT,BIGINT)      TO anon, authenticated, service_role;
 
 -- 5) Перезагрузить PostgREST schema cache
 NOTIFY pgrst, 'reload schema';

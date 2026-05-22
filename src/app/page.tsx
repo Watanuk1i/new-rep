@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useStore } from '@/lib/store/StoreProvider';
+import { isPlayer } from '@/lib/utils';
 import { ParticipantCard } from '@/components/cards/ParticipantCard';
 import { Yen } from '@/components/ui/Yen';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
@@ -31,7 +32,7 @@ const ACADEMY_EVENT_TYPES = new Set([
 
 export default function HomePage() {
   const { state, role, ready } = useStore();
-  const players = state.participants.filter(p => p.status !== 'gm');
+  const players = state.participants.filter(p => isPlayer(p));
   const queen = state.participants.find(p => p.status === 'queen');
   const elite = state.participants.filter(p => p.status === 'elite');
   const totalBank = players.reduce((s, p) => s + p.balance, 0);

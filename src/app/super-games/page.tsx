@@ -2,14 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useStore, uid } from '@/lib/store/StoreProvider';
-import { CharacterIcon } from '@/components/ui/CharacterIcon';
-import { cn, timeAgo } from '@/lib/utils';
-import { getSupabase } from '@/lib/supabase/client';
+import { useStore } from '@/lib/store/StoreProvider';
+import { cn } from '@/lib/utils';
 
 const GAME_TYPES = [
+  { type: 'minority_rule', label: 'Правило меньшинства', desc: 'Голосуйте за меньшинство', count: '2-10', rules: 'Каждый раунд один из игроков задаёт вопрос «да/нет». Все живые голосуют. Кто в большинстве — выбывают, кто в меньшинстве — остаются. Не проголосовал — штраф 100k и выбыл. При ничьей никто не выбывает. Последний выживший забирает банк.', isLive: true },
+  { type: 'nine_bullets', label: 'Комната девяти патронов', desc: '3 раунда, барабан, 9 мест', count: '7+', rules: '3 раунда. В каждом — Заряжающий, Стрелок и 5 Сидящих. Заряжающий тайно ставит 3 красных и 6 синих. Сидящие покупают места слепым аукционом, остальные — манекены. Стрелок может поменять две цели за 100k. Затем 9 выстрелов по местам. Деньги идут напрямую между игроками или через Казну (за манекенов).', isLive: true },
   { type: 'collar', label: 'Игра ошейника', desc: 'Бой за свободу или ошейник', count: '2-4', rules: '2-4 игрока. Раунды на смекалку. Проигравший — Питомец.' },
-  { type: 'minority_rule', label: 'Правило меньшинства', desc: 'Голосуйте за меньшинство', count: '5-10', rules: '5 раундов. Меньшинство получает очки.' },
   { type: 'rumor_pandemic', label: 'Пандемия слухов', desc: 'Кто запустит самый громкий слух', count: '5+', rules: 'Каждый день один слух. Голосование за самый правдоподобный.' },
   { type: 'musical_thrones', label: 'Музыкальные троны', desc: 'Не остаться без места', count: '4-8', rules: 'Очко тому, кто сядет на трон по сигналу.' },
   { type: 'smuggling', label: 'Контрабанда', desc: 'Пронеси и не попадись', count: '3-6', rules: 'Игроки прячут предметы. Стража ищет.' },
@@ -63,35 +62,46 @@ export default function SuperGamesPage() {
             <div className="text-4xl mb-2 opacity-30">🏟️</div>
             <p className="text-sm text-muted-foreground">Ничего нет.</p>
           </div>
-        ) : filtered.map(g => (
-          <Link key={g.id} href={`/super-games/${g.id}`}>
-            <div className="glass-strong gold-border overflow-hidden active:scale-[0.99]">
-              <div className="h-1 bg-gradient-to-r from-gold-light via-gold to-gold-dark" />
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <h3 className="font-heading text-lg font-bold text-gold flex-1">{g.title}</h3>
-                  <span className={cn('status-badge border shrink-0',
-                    g.status === 'live' ? 'bg-red-500/15 text-red-300 border-red-500/30 animate-pulse-gold' :
-                    g.status === 'scheduled' ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' :
-                    'bg-gray-500/15 text-gray-400 border-gray-500/30'
-                  )}>
-                    {g.status === 'live' ? 'В эфире' : g.status === 'scheduled' ? 'Скоро' : 'Завершено'}
-                  </span>
-                </div>
-                {g.description && <p className="text-xs text-muted-foreground mb-2">{g.description}</p>}
-                {g.stakes && (
-                  <div className="text-xs text-gold/90 bg-gold/5 border border-gold/20 rounded-lg px-2.5 py-1.5 mb-2">
-                    💰 {g.stakes}
+        ) : filtered.map(g => {
+          const gt = GAME_TYPES.find(t => t.type === g.type);
+          return (
+            <Link key={g.id} href={`/super-games/${g.id}`}>
+              <div className="glass-strong gold-border overflow-hidden active:scale-[0.99]">
+                <div className="h-1 bg-gradient-to-r from-gold-light via-gold to-gold-dark" />
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-heading text-lg font-bold text-gold">{g.title}</h3>
+                      {gt && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          {gt.label}
+                          {gt.isLive && <span className="ml-1.5 text-amber-300">· интерактив</span>}
+                        </div>
+                      )}
+                    </div>
+                    <span className={cn('status-badge border shrink-0',
+                      g.status === 'live' ? 'bg-red-500/15 text-red-300 border-red-500/30 animate-pulse-gold' :
+                      g.status === 'scheduled' ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' :
+                      'bg-gray-500/15 text-gray-400 border-gray-500/30'
+                    )}>
+                      {g.status === 'live' ? 'В эфире' : g.status === 'scheduled' ? 'Скоро' : 'Завершено'}
+                    </span>
                   </div>
-                )}
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>👥 {(g.participant_ids || []).length} участн.</span>
-                  {g.starts_at && <span>{new Date(g.starts_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>}
+                  {g.description && <p className="text-xs text-muted-foreground mb-2">{g.description}</p>}
+                  {g.stakes && (
+                    <div className="text-xs text-gold/90 bg-gold/5 border border-gold/20 rounded-lg px-2.5 py-1.5 mb-2">
+                      💰 {g.stakes}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>👥 {(g.participant_ids || []).length} участн.</span>
+                    {g.starts_at && <span>{new Date(g.starts_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>}
+                  </div>
                 </div>
               </div>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          );
+        })}
       </div>
 
       {/* Типы игр */}
@@ -100,8 +110,14 @@ export default function SuperGamesPage() {
         <div className="grid grid-cols-2 gap-2">
           {GAME_TYPES.map(gt => (
             <button key={gt.type} onClick={() => setSelectedType(gt.type)}
-              className="glass p-3 text-left active:scale-95">
-              <div className="font-bold text-sm leading-tight">{gt.label}</div>
+              className={cn('glass p-3 text-left active:scale-95 relative',
+                gt.isLive && 'gold-border')}>
+              {gt.isLive && (
+                <span className="absolute top-1 right-1 text-[9px] font-bold uppercase tracking-wider text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-md">
+                  live
+                </span>
+              )}
+              <div className="font-bold text-sm leading-tight pr-9">{gt.label}</div>
               <div className="text-[10px] text-muted-foreground mt-0.5">{gt.desc}</div>
               <div className="text-[10px] text-gold mt-1">👥 {gt.count}</div>
             </button>
@@ -117,7 +133,14 @@ export default function SuperGamesPage() {
               const t = GAME_TYPES.find(g => g.type === selectedType)!;
               return (
                 <>
-                  <h3 className="font-heading text-xl font-bold mb-1">{t.label}</h3>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-heading text-xl font-bold flex-1">{t.label}</h3>
+                    {t.isLive && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                        live
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground mb-3">{t.desc}</p>
                   <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-1">Правила</div>
                   <p className="text-sm whitespace-pre-line mb-3">{t.rules}</p>

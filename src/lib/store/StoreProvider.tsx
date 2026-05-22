@@ -336,7 +336,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const notifyAllPlayers: StoreCtx['notifyAllPlayers'] = useCallback(async (n, exceptId) => {
     if (!sb) return;
-    const targets = state.participants.filter(p => p.status !== 'gm' && p.id !== exceptId);
+    const targets = state.participants.filter(p => p.status !== 'gm' && p.status !== 'treasury' && p.id !== exceptId);
     if (targets.length === 0) return;
     const rows = targets.map(p => ({
       id: uid('n'),

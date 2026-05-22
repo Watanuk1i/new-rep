@@ -1,6 +1,6 @@
 'use client';
 
-// Значок валюты «ейн»
+// Значок валюты «ейн». Отрицательные суммы автоматически подсвечиваются красным.
 import { cn, formatYen, formatYenFull } from '@/lib/utils';
 
 export function Yen({
@@ -10,8 +10,13 @@ export function Yen({
   iconClass,
 }: { amount: number; full?: boolean; className?: string; iconClass?: string }) {
   const text = full ? formatYenFull(amount) : formatYen(amount);
+  const negative = amount < 0;
   return (
-    <span className={cn('inline-flex items-center gap-1 font-mono font-bold tabular-nums', className)}>
+    <span className={cn(
+      'inline-flex items-center gap-1 font-mono font-bold tabular-nums',
+      className,
+      negative && 'text-red-300',
+    )}>
       <YenIcon className={iconClass} />
       <span>{text}</span>
     </span>

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useStore, uid } from '@/lib/store/StoreProvider';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
-import { cn, timeAgo } from '@/lib/utils';
+import { cn, timeAgo, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import type { Rumor } from '@/lib/store/types';
 
@@ -34,7 +34,7 @@ export default function RumorsPage() {
     });
     // Уведомление всем
     const targets = state.participants.filter(p =>
-      p.status !== 'gm' && p.id !== currentUser.id && p.is_active
+      isPlayer(p) && p.id !== currentUser.id && p.is_active
     );
     if (targets.length > 0) {
       await sb.from('notifications').insert(targets.map(t => ({
