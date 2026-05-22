@@ -538,6 +538,8 @@ function SuperGamesAdmin() {
       <ContrabandCreator />
       <DebtTowerCreator />
       <DebtAuctionCreator />
+      <EliteTrialCreator />
+      <RebellionCreator />
 
       <button onClick={() => setCreating(!creating)} className="btn-primary w-full">
         {creating ? '✕ Отмена' : '+ Создать Супер игру'}
@@ -2036,6 +2038,261 @@ function DebtAuctionCreator() {
       >
         {busy ? '...' : '⚖️ Создать Аукцион долгов'}
       </button>
+    </div>
+  );
+}
+
+
+// =====================================================================
+// СУД НАД ЭЛИТОЙ — создание Большой игры
+// =====================================================================
+
+function EliteTrialCreator() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    if (!sb) return;
+    setBusy(true);
+    const sgId = uid('sg');
+    const initialState = {
+      judge_id: 'p-queen',
+      target_elite_id: '',
+      prosecution_player_ids: [],
+      defense_player_ids: [],
+      accusation_text: '',
+      defense_text: '',
+      prosecution_fund: 0,
+      defense_fund: 0,
+      prosecution_score: 0,
+      defense_score: 0,
+      cards: [],
+      contributions: [],
+      verdict: null,
+      status: 'target_selection',
+    };
+
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: 'Суд над Элитой',
+      type: 'elite_trial',
+      description: 'Публичный суд: карточный поединок Обвинения и Защиты.',
+      rules:
+        'Судья — Селестия. Защита побеждает при равенстве очков.\n' +
+        'Стороны собирают фонды (любой игрок может внести в свою сторону).\n' +
+        'За 50k открывается случайная карта дела, за 100k покупается. Сторона играет до 5 карт.\n' +
+        'Очки складываются согласно карте; опасные карты могут давать штрафы или менять сторону.\n' +
+        'Виновный — штраф 1M в Казну. Оправданный — компенсация 500k из Казны.',
+      stakes: 'Игроки рискуют только тем, что вложили в фонды своих сторон.',
+      status: 'live',
+      participant_ids: [],
+      spectator_bets_enabled: false,
+      entry_fee: 0,
+      bank: 0,
+      state: initialState,
+    });
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'big_game_start',
+      title: 'Селестия открывает «Суд над Элитой»',
+      body: 'Назначьте судимую Элиту, стороны и пункт обвинения.',
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+  };
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">⚖️</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Большая игра</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            Суд над Элитой
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Судья — Селестия · Обвинение vs Защита · карточный поединок
+          </div>
+        </div>
+      </div>
+      <div className="text-[10px] text-muted leading-relaxed bg-white/5 rounded-lg px-3 py-2 border border-white/5">
+        Создаёт пустой суд. Выбор Элиты, сторон и текстов — на странице игры.
+      </div>
+      <button className="btn-primary w-full" onClick={create} disabled={busy}>
+        {busy ? '...' : '⚖️ Создать Суд над Элитой'}
+      </button>
+    </div>
+  );
+}
+
+// =====================================================================
+// СОВЕТ БУНТА — создание Большой игры
+// =====================================================================
+
+function RebellionCreator() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const eligible = state.participants.filter(p => isPlayer(p) && p.is_active);
+
+  const togglePart = (pid: string) => {
+    const next = new Set(selected);
+    if (next.has(pid)) next.delete(pid);
+    else if (next.size < 12) next.add(pid);
+    setSelected(next);
+  };
+
+  const create = async () => {
+    setError(null);
+    if (selected.size < 6) {
+      setError(`Минимум 6 игроков. Сейчас: ${selected.size}.`);
+      return;
+    }
+    if (!sb) return;
+    setBusy(true);
+    const sgId = uid('sg');
+    const ids = Array.from(selected);
+
+    const initialState = {
+      current_round: 0,
+      total_rounds: 5,
+      rounds: [],
+      rebellion_fund: 0,
+      rebellion_goal: 3_000_000,
+      reveal_mode: 'public_names',
+      player_counts: {},
+      result: null,
+      throne_unlocked: false,
+      status: 'scheduled',
+    };
+
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: 'Совет бунта',
+      type: 'rebellion',
+      description: 'Тайный совет недовольных академией. 5 раундов · 4 действия.',
+      rules:
+        'Селестия наблюдает. 6–12 игроков, 5 раундов.\n' +
+        'В каждом раунде игрок тайно выбирает одно из четырёх действий:\n' +
+        '— Бунт: −100k, Фонд бунта +150k.\n' +
+        '— Предательство: +150k из Казны, Фонд −100k.\n' +
+        '— Нейтралитет: без изменений.\n' +
+        '— Сделка с Элитой: +250k, но при успехе бунта −500k штраф.\n' +
+        'Цель: собрать Фонд бунта ≥ 3 000 000.\n' +
+        'Успех: Казна теряет 3M; лояльные бунтари (≥3 выборов) +300k; сделочники −500k; частые предатели (≥2 раз) −300k. Разблокируется «Трон Селестии».\n' +
+        'Провал: лояльные бунтари (≥3 выборов) −300k; предатели и сделочники сохраняют выплаты.',
+      stakes: 'Платежи и награды идут через Казну. Личные деньги под риском.',
+      status: 'scheduled',
+      participant_ids: ids,
+      spectator_bets_enabled: false,
+      entry_fee: 0,
+      bank: 0,
+      state: initialState,
+    });
+
+    await sb.from('notifications').insert(
+      ids.map(pid => ({
+        id: uid('n'),
+        recipient_id: pid,
+        type: 'big_game_invite',
+        title: 'Совет бунта',
+        body: 'Тайный совет — будете бунтовать или продадите союзников?',
+        link_url: `/super-games/${sgId}`,
+        is_read: false,
+      })),
+    );
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'big_game_start',
+      title: 'Совет бунта собирается',
+      body: `Игроков: ${ids.length}. Цель Фонда бунта: 3 000 000.`,
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+    setOpen(false);
+    setSelected(new Set());
+  };
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">🔥</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Большая игра</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            Совет бунта
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            6–12 игроков · 5 раундов · цель Фонда 3 000 000
+          </div>
+        </div>
+      </div>
+
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="btn-primary w-full">
+          + Создать Совет бунта
+        </button>
+      ) : (
+        <div className="space-y-3 animate-slide-down">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gold">
+              Выбрать 6–12 игроков ({selected.size})
+            </label>
+          </div>
+          <div className="max-h-56 overflow-y-auto space-y-1 glass p-2">
+            {eligible.map(p => {
+              const isSelected = selected.has(p.id);
+              const limitReached = !isSelected && selected.size >= 12;
+              return (
+                <label
+                  key={p.id}
+                  className={cn(
+                    'flex items-center gap-2 p-1.5 rounded-lg cursor-pointer active:bg-white/5',
+                    limitReached && 'opacity-40 cursor-not-allowed',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    disabled={limitReached}
+                    onChange={() => togglePart(p.id)}
+                    className="w-4 h-4 accent-gold"
+                  />
+                  <CharacterIcon participant={p} size="xs" ringless />
+                  <span className="text-sm flex-1">{p.display_name}</span>
+                  <Yen amount={p.balance} className="text-[10px] text-muted-foreground" iconClass="w-3 h-3" />
+                </label>
+              );
+            })}
+          </div>
+
+          {error && (
+            <div className="glass crimson-border p-2 text-xs text-red-300 text-center">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setOpen(false)} className="btn-secondary">Отмена</button>
+            <button
+              onClick={create}
+              disabled={busy || selected.size < 6}
+              className={cn('btn-primary', busy && 'opacity-50')}
+            >
+              {busy ? '...' : '🔥 Создать'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -102,7 +102,7 @@ export interface SuperGame {
   entry_fee: number;
   bank: number;
   winner_id?: string | null;
-  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | DebtTowerState | DebtAuctionState | Record<string, any>;
+  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | DebtTowerState | DebtAuctionState | RebellionState | EliteTrialState | Record<string, any>;
   created_at: string;
 }
 
@@ -379,6 +379,109 @@ export interface DebtAuctionState {
     | 'lot_open'
     | 'bidding'
     | 'lot_closed'
+    | 'finished'
+    | 'cancelled';
+}
+
+// ===== Совет бунта (8-я Большая игра) =====
+export type RebellionAction = 'rebellion' | 'betrayal' | 'neutral' | 'elite_deal';
+
+export interface RebellionRound {
+  number: number;                              // 1..5
+  status: 'choice' | 'revealed' | 'resolved';
+  choices: Record<string, RebellionAction>;    // playerId → action (тайно до reveal)
+  rebellion_count?: number;
+  betrayal_count?: number;
+  neutral_count?: number;
+  elite_deal_count?: number;
+  fund_delta?: number;
+  fund_after_round?: number;
+  resolved_at?: string;
+}
+
+export interface RebellionPlayerCounts {
+  rebellion: number;
+  betrayal: number;
+  neutral: number;
+  elite_deal: number;
+  total_money_delta: number;
+}
+
+export interface RebellionState {
+  current_round: number;                       // 0..5
+  total_rounds: number;                        // = 5
+  rounds: RebellionRound[];
+  rebellion_fund: number;
+  rebellion_goal: number;
+  reveal_mode: 'public_names' | 'numbers_only';
+  player_counts: Record<string, RebellionPlayerCounts>;
+  result?: 'rebellion_success' | 'rebellion_failed' | null;
+  throne_unlocked?: boolean;
+  status:
+    | 'scheduled'
+    | 'participant_setup'
+    | 'active'
+    | 'round_choice'
+    | 'round_reveal'
+    | 'round_result'
+    | 'finishing'
+    | 'finished'
+    | 'cancelled';
+}
+
+// ===== Суд над Элитой (9-я Большая игра) =====
+export type EliteTrialSide = 'prosecution' | 'defense';
+export type EliteTrialCardSide = 'prosecution' | 'defense' | 'neutral' | 'dangerous';
+export type EliteTrialCardEffect =
+  | 'add_points' | 'subtract_points' | 'block_card'
+  | 'random_bonus_or_penalty' | 'switch_side' | 'no_effect';
+export type EliteTrialCardStatus = 'hidden' | 'revealed' | 'owned' | 'played' | 'blocked';
+
+export interface EliteTrialCard {
+  id: string;
+  title: string;
+  side: EliteTrialCardSide;
+  points: number;
+  effect_type: EliteTrialCardEffect;
+  description: string;
+  status: EliteTrialCardStatus;
+  owner_side?: EliteTrialSide | null;
+  played_at?: string;
+  played_by_side?: EliteTrialSide | null;
+  effect_note?: string | null;
+}
+
+export interface EliteTrialFundContribution {
+  id: string;
+  player_id: string;
+  side: EliteTrialSide;
+  amount: number;
+  created_at: string;
+}
+
+export interface EliteTrialState {
+  judge_id: string;                  // 'p-queen'
+  target_elite_id: string;
+  prosecution_player_ids: string[];
+  defense_player_ids: string[];
+  accusation_text: string;
+  defense_text: string;
+  prosecution_fund: number;
+  defense_fund: number;
+  prosecution_score: number;
+  defense_score: number;
+  cards: EliteTrialCard[];
+  contributions: EliteTrialFundContribution[];
+  verdict?: 'elite_guilty' | 'elite_acquitted' | null;
+  status:
+    | 'scheduled'
+    | 'target_selection'
+    | 'side_setup'
+    | 'accusation_setup'
+    | 'defense_setup'
+    | 'evidence_market'
+    | 'trial'
+    | 'verdict'
     | 'finished'
     | 'cancelled';
 }
