@@ -11,7 +11,7 @@ import { TREASURY_ID, applyTransfer } from '@/lib/store/tx';
 import type { Debt } from '@/lib/store/types';
 
 export default function DebtsPage() {
-  const { state, currentUser, role, notify, addHistory } = useStore();
+  const { state, currentUser, role, notify } = useStore();
   const [tab, setTab] = useState<'incoming' | 'mine' | 'closed' | 'create'>('mine');
   const sb = getSupabase();
   const isAdmin = role === 'gm' || role === 'queen' || role === 'collector';

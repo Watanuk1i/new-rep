@@ -10,6 +10,7 @@ import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen, YenIcon } from '@/components/ui/Yen';
 import { cn, formatYenFull } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
+import { applyTransfer } from '@/lib/store/tx';
 
 interface Props {
   open: boolean;
@@ -33,7 +34,7 @@ export function TransferModal({
   defaultComment = '',
   onDone,
 }: Props) {
-  const { state, currentUser, addHistory, notify } = useStore();
+  const { state, currentUser, notify } = useStore();
   const sb = getSupabase();
 
   const [recipientId, setRecipientId] = useState(initialRecipientId || '');
@@ -84,18 +85,21 @@ export function TransferModal({
 
     setBusy(true);
 
-    // 1) Списываем у отправителя, начисляем получателю
-    const { error: e1 } = await sb.from('participants')
-      .update({ balance: currentUser.balance - amount })
-      .eq('id', currentUser.id);
-    if (e1) { setError(e1.message); setBusy(false); return; }
+    // 1) Атомарный перевод через RPC: пишет history, при нехватке создаёт авто-долг.
+    const tx = await applyTransfer(
+      currentUser.id,
+      recipient.id,
+      amount,
+      comment.trim(),
+      '/transfers',
+    );
+    if (!tx.ok) {
+      setError(tx.error || 'Не удалось выполнить перевод');
+      setBusy(false);
+      return;
+    }
 
-    const { error: e2 } = await sb.from('participants')
-      .update({ balance: recipient.balance + amount })
-      .eq('id', recipient.id);
-    if (e2) { setError(e2.message); setBusy(false); return; }
-
-    // 2) Запись в transfers
+    // 2) Запись в transfers (отдельная таблица для ленты переводов)
     await sb.from('transfers').insert({
       id: uid('tr'),
       sender_id: currentUser.id,
@@ -105,21 +109,7 @@ export function TransferModal({
       related_game_id: relatedGameId || null,
     });
 
-    // 3) История у обоих + уведомление получателю
-    await addHistory(
-      currentUser.id,
-      'transfer_sent',
-      `Перевёл ${recipient.display_name}: ${comment.trim()}`,
-      -amount,
-      '/transfers',
-    );
-    await addHistory(
-      recipient.id,
-      'transfer_received',
-      `Получил от ${currentUser.display_name}: ${comment.trim()}`,
-      amount,
-      '/transfers',
-    );
+    // 3) Уведомление получателю
     await notify(recipient.id, {
       type: 'transfer_received',
       title: `${currentUser.display_name} перевёл вам ${formatYenFull(amount)} ейн`,
