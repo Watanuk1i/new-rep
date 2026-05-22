@@ -24,6 +24,8 @@ interface RevolverProps {
   size?: number;
   /** Класс контейнера. */
   className?: string;
+  /** Последнее место, куда стреляли (1..9) — используется для пульсации эффекта. */
+  flashSeat?: number | null;
 }
 
 export function Revolver({
@@ -35,6 +37,7 @@ export function Revolver({
   highlightSeat,
   size = 240,
   className,
+  flashSeat = null,
 }: RevolverProps) {
   // 9 слотов: индекс i (0..8) → место (i+1).
   // Угол i-го слота: -90° + i*40° (вверху и по часовой).
@@ -139,19 +142,52 @@ export function Revolver({
 
           const isHighlighted = highlightSeat === seat;
           const isFired = !showAll && seat <= revealed;
+          const isFlashing = flashSeat === seat && bullet !== null;
 
           return (
             <g key={i}>
               {/* Лунка (углубление) */}
               <circle cx={x} cy={y} r={slotRadius + 3} fill="#0a0810" stroke="#000" strokeOpacity={0.6} />
+
+              {/* Эффект пульсации только что произведённого выстрела */}
+              {isFlashing && bullet === 'red' && (
+                <>
+                  <circle cx={x} cy={y} r={slotRadius + 6} fill="none" stroke="#ef4444" strokeWidth={3} opacity={0.85}>
+                    <animate attributeName="r" from={slotRadius + 6} to={slotRadius + 18} dur="1.2s" begin="0s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" from="0.95" to="0" dur="1.2s" begin="0s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx={x} cy={y} r={slotRadius + 2} fill="#7f1d1d" opacity={0.55}>
+                    <animate attributeName="opacity" values="0.55;0.2;0.55" dur="1.4s" repeatCount="indefinite" />
+                  </circle>
+                </>
+              )}
+              {isFlashing && bullet === 'blue' && (
+                <>
+                  <circle cx={x} cy={y} r={slotRadius + 6} fill="none" stroke="#38bdf8" strokeWidth={2.5} opacity={0.7}>
+                    <animate attributeName="r" from={slotRadius + 6} to={slotRadius + 16} dur="1.4s" begin="0s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" from="0.7" to="0" dur="1.4s" begin="0s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx={x} cy={y} r={slotRadius + 1} fill="#0c4a6e" opacity={0.4}>
+                    <animate attributeName="opacity" values="0.4;0.15;0.4" dur="1.6s" repeatCount="indefinite" />
+                  </circle>
+                </>
+              )}
+
               {/* Патрон или скрытое содержимое */}
               <circle
                 cx={x} cy={y} r={slotRadius}
                 fill={fill}
-                stroke={isHighlighted ? '#f5d77a' : isFired ? (bullet === 'red' ? '#fca5a5' : '#7dd3fc') : '#3a3540'}
-                strokeWidth={isHighlighted ? 2.5 : 1.2}
+                stroke={isFlashing
+                  ? (bullet === 'red' ? '#fca5a5' : '#7dd3fc')
+                  : isHighlighted ? '#f5d77a'
+                    : isFired ? (bullet === 'red' ? '#fca5a5' : '#7dd3fc') : '#3a3540'}
+                strokeWidth={isHighlighted || isFlashing ? 2.5 : 1.2}
                 style={{
-                  filter: isHighlighted ? 'drop-shadow(0 0 8px #f5d77a)' : undefined,
+                  filter: isHighlighted
+                    ? 'drop-shadow(0 0 8px #f5d77a)'
+                    : isFlashing
+                      ? `drop-shadow(0 0 12px ${bullet === 'red' ? '#ef4444' : '#38bdf8'})`
+                      : undefined,
                   transition: 'fill 0.4s ease, stroke 0.3s ease',
                 }}
               />
@@ -162,7 +198,7 @@ export function Revolver({
                 fontFamily="Montserrat, sans-serif"
                 fontSize={Math.max(10, size * 0.05)}
                 fontWeight={700}
-                fill={isHighlighted ? '#f5d77a' : '#9a8a6a'}
+                fill={isHighlighted || isFlashing ? '#f5d77a' : '#9a8a6a'}
                 opacity={0.85}
               >
                 {seat}

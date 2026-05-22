@@ -587,6 +587,7 @@ function ShootingPhase({
           showAll={false}
           spinning={false}
           size={260}
+          flashSeat={lastShot ? lastShot.seat : null}
         />
         <div className="mt-3 text-center">
           <div className="text-[10px] uppercase tracking-widest text-gold/70">

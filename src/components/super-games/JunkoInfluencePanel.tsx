@@ -87,11 +87,11 @@ export function JunkoInfluencePanel({ game }: { game: SuperGame }) {
         <div className="flex-1">
           <div className="text-[10px] uppercase tracking-widest text-fuchsia-300/80">Куратор</div>
           <div className="font-heading text-base font-bold text-gradient-gold">
-            Джунко Эношима · режиссёр хаоса
+            Джунко Эношима
           </div>
           <div className="text-[10px] text-muted-foreground">
-            Не меняет патроны и не управляет результатом. Может усложнять торги или ставить
-            Стрелка перед сложным выбором.
+            Не меняет патроны и не управляет результатом. Может вмешиваться в торги
+            и ставить Стрелка перед неудобным выбором.
           </div>
         </div>
       </div>
@@ -100,13 +100,13 @@ export function JunkoInfluencePanel({ game }: { game: SuperGame }) {
       <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
         <div className={cn('p-2 rounded-lg',
           provUsedInThisRound ? 'bg-fuchsia-500/10 border border-fuchsia-500/30' : 'bg-card/40')}>
-          Провокация
-          <div className="font-bold mt-0.5">{provUsedInThisRound ? 'исп.' : 'доступна'}</div>
+            Влияние · аукцион
+          <div className="font-bold mt-0.5">{provUsedInThisRound ? 'исп.' : 'доступно'}</div>
         </div>
         <div className={cn('p-2 rounded-lg',
           sub.laugh_used ? 'bg-fuchsia-500/10 border border-fuchsia-500/30' : 'bg-card/40')}>
-          Смех Джунко
-          <div className="font-bold mt-0.5">{sub.laugh_used ? 'исп.' : 'доступен'}</div>
+          Влияние · стрелок
+          <div className="font-bold mt-0.5">{sub.laugh_used ? 'исп.' : 'доступно'}</div>
         </div>
         <div className="p-2 rounded-lg bg-card/40">
           Штрафы
