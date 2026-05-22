@@ -540,6 +540,8 @@ function SuperGamesAdmin() {
       <DebtAuctionCreator />
       <EliteTrialCreator />
       <RebellionCreator />
+      <ThroneCreator />
+      <MiniGamesCreator />
 
       <button onClick={() => setCreating(!creating)} className="btn-primary w-full">
         {creating ? '✕ Отмена' : '+ Создать Супер игру'}
@@ -2295,4 +2297,348 @@ function RebellionCreator() {
       )}
     </div>
   );
+}
+
+
+// =====================================================================
+// ТРОН СЕЛЕСТИИ — финал сезона
+// =====================================================================
+
+function ThroneCreator() {
+  const sb = getSupabase();
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    if (!sb) return;
+    setBusy(true);
+    const sgId = uid('sg');
+    const initialState = {
+      celestia_id: 'p-queen',
+      challenger_id: '',
+      celestia_supporter_ids: [],
+      challenger_supporter_ids: [],
+      neutral_ids: [],
+      celestia_fund: 0,
+      challenger_fund: 0,
+      celestia_score: 0,
+      challenger_score: 0,
+      current_round: 0,
+      total_rounds: 10,
+      rounds: [],
+      contributions: [],
+      purchases: [],
+      celestia_privilege_used: false,
+      block_celestia_next_round: false,
+      replay_used_celestia: false,
+      replay_used_challenger: false,
+      winner: null,
+      final_outcome: null,
+      status: 'challenger_setup',
+    };
+
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: 'Трон Селестии',
+      type: 'throne_celestia',
+      description: 'Финальная супер-игра сезона. Селестия против Претендента.',
+      rules:
+        '10 раундов дуэли. Карты: Император / Гражданин / Питомец (Император > Гражданин > Питомец > Император).\n' +
+        'Первые 5 раундов: Селестия — Император, Претендент — Питомец. Вторые 5 — стороны меняются.\n' +
+        'При ничье после 10 раундов — серия «Последний трон» (только Император vs Питомец).\n' +
+        'Привилегия Селестии «Королевский регламент» (1 раз): посмотреть карту, заставить переиграть, заблокировать карту.\n' +
+        'Преимущества из фондов: посмотреть 500k, заменить 700k, переиграть проигрыш 1M, блок привилегии 1.5M (только Претендент).\n' +
+        'Победа Селестии: должность остаётся, ставки уходят в Казну.\n' +
+        'Победа Претендента: выбор финала — Новый директор или Бунт победил.',
+      stakes: 'Селестия — должность + 5 000 000. Претендент — 2 000 000 (или весь баланс).',
+      status: 'live',
+      participant_ids: [],
+      spectator_bets_enabled: false,
+      entry_fee: 0,
+      bank: 0,
+      state: initialState,
+    });
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'big_game_start',
+      title: 'Открыт финал сезона: «Трон Селестии»',
+      body: 'Назначьте Претендента и откройте выбор сторон.',
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+  };
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">♛</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Финальная супер-игра</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            Трон Селестии
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Селестия vs Претендент · 10 раундов · ставка должности
+          </div>
+        </div>
+      </div>
+      <div className="text-[10px] text-muted leading-relaxed bg-white/5 rounded-lg px-3 py-2 border border-white/5">
+        Создаёт пустой финал. Выбор Претендента, открытие сторон/фондов и старт дуэли — на странице игры.
+        Ставки 5M Селестии и до 2M Претендента списываются в Казну при старте 1-го раунда.
+      </div>
+      <button className="btn-primary w-full" onClick={create} disabled={busy}>
+        {busy ? '...' : '♛ Создать финал «Трон Селестии»'}
+      </button>
+    </div>
+  );
+}
+
+
+// =====================================================================
+// МАЛЫЕ ИГРЫ (5 MVP)
+// =====================================================================
+// 1. Красное / Чёрное (1v1)
+// 2. Слепая ставка (2–6)
+// 3. Лжец на кубиках (2–6)
+// 4. 21 отчаяния (1–5 vs дилер)
+// 5. Выкупной стол (должник + хозяин)
+
+const MINI_GAMES: { type: string; label: string; emoji: string; minPlayers: number; maxPlayers: number; defaultStake: number; allowsDebt?: boolean }[] = [
+  { type: 'mini_red_black',  label: 'Красное / Чёрное', emoji: '🎴', minPlayers: 2, maxPlayers: 2, defaultStake: 50_000 },
+  { type: 'mini_blind_bid',  label: 'Слепая ставка',    emoji: '🎯', minPlayers: 2, maxPlayers: 6, defaultStake: 0 },
+  { type: 'mini_liar_dice',  label: 'Лжец на кубиках',  emoji: '🎲', minPlayers: 2, maxPlayers: 6, defaultStake: 50_000 },
+  { type: 'mini_despair_21', label: '21 отчаяния',      emoji: '🂡', minPlayers: 1, maxPlayers: 5, defaultStake: 50_000 },
+  { type: 'mini_ransom',     label: 'Выкупной стол',    emoji: '🃟', minPlayers: 1, maxPlayers: 1, defaultStake: 0, allowsDebt: true },
+];
+
+function MiniGamesCreator() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [open, setOpen] = useState(false);
+  const [pickedType, setPickedType] = useState<string>('mini_red_black');
+  const [stake, setStake] = useState<number>(50_000);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [debtId, setDebtId] = useState<string>(''); // для выкупного стола
+  const [debts, setDebts] = useState<any[]>([]);
+
+  const meta = MINI_GAMES.find(m => m.type === pickedType)!;
+  const eligible = state.participants.filter(p => isPlayer(p) && p.is_active);
+
+  useEffect(() => {
+    if (pickedType !== 'mini_ransom' || !sb) return;
+    let alive = true;
+    (async () => {
+      const { data } = await sb.from('debts').select('*').in('status', ['active', 'overdue']).order('created_at', { ascending: false });
+      if (alive) setDebts(data ?? []);
+    })();
+    return () => { alive = false; };
+  }, [pickedType, sb]);
+
+  const togglePart = (pid: string) => {
+    const next = new Set(selected);
+    if (next.has(pid)) next.delete(pid);
+    else if (next.size < meta.maxPlayers) next.add(pid);
+    setSelected(next);
+  };
+
+  const create = async () => {
+    setError(null);
+    if (selected.size < meta.minPlayers) {
+      setError(`Нужно минимум ${meta.minPlayers} игрок(ов).`);
+      return;
+    }
+    if (!sb) return;
+    setBusy(true);
+
+    const sgId = uid('sg');
+    const ids = Array.from(selected);
+    let initialState: any = {};
+
+    if (pickedType === 'mini_red_black') {
+      initialState = { stake, fee_paid: {}, choices: {}, result: null, winner_ids: [], status: 'waiting_players' };
+    } else if (pickedType === 'mini_blind_bid') {
+      initialState = { fee_paid: {}, bids: {}, status: 'active', winner_id: null };
+    } else if (pickedType === 'mini_liar_dice') {
+      initialState = { stake, fee_paid: {}, dice: {}, turn_order: [], current_turn_idx: 0, claim: null, status: 'waiting_players' };
+    } else if (pickedType === 'mini_despair_21') {
+      initialState = { stake, fee_paid: {}, hands: {}, stand: {}, dealer_hand: [], status: 'waiting_players' };
+    } else if (pickedType === 'mini_ransom') {
+      const debt = debts.find(d => d.id === debtId);
+      if (!debt) { setError('Выберите долг.'); setBusy(false); return; }
+      initialState = {
+        debt_id: debt.id,
+        debt_amount_initial: debt.amount,
+        remover_id: 'p-treasury',
+        removed_card_index: null,
+        cards_order: shuffleRansomCardsAdminCopy(),
+        picked_card_index: null,
+        picked_card: null,
+        new_debt_amount: debt.amount,
+        postponed: false,
+        status: 'waiting_remove',
+      };
+      // Должник = только этот игрок
+      const debtorId = debt.debtor_id;
+      const arr = [debtorId];
+      for (const id of arr) selected.add(id);
+    }
+
+    const finalIds = pickedType === 'mini_ransom' ? Array.from(selected) : ids;
+
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: meta.label,
+      type: pickedType,
+      description: `Малая игра: ${meta.label}`,
+      rules: '',
+      stakes: stake > 0 ? `Ставка ${stake.toLocaleString('ru-RU')} с каждого участника` : null,
+      status: 'live',
+      participant_ids: finalIds,
+      spectator_bets_enabled: false,
+      entry_fee: stake,
+      bank: 0,
+      state: initialState,
+    });
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'mini_game_start',
+      title: `Малая игра: ${meta.label}`,
+      body: `Игроков: ${finalIds.length}.`,
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+    setOpen(false);
+    setSelected(new Set());
+  };
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">🎯</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Малые игры</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            5 быстрых форматов
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Красное/Чёрное · Слепая ставка · Лжец · 21 отчаяния · Выкупной стол
+          </div>
+        </div>
+      </div>
+
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="btn-primary w-full">
+          + Создать малую игру
+        </button>
+      ) : (
+        <div className="space-y-3 animate-slide-down">
+          <select
+            className="input-field text-xs"
+            value={pickedType}
+            onChange={e => { setPickedType(e.target.value); setSelected(new Set()); }}
+          >
+            {MINI_GAMES.map(m => (
+              <option key={m.type} value={m.type}>{m.emoji} {m.label}</option>
+            ))}
+          </select>
+
+          {meta.defaultStake > 0 && (
+            <div>
+              <div className="text-[10px] text-gold/80 mb-1">Ставка с каждого (¥)</div>
+              <input
+                type="number" min={10_000} step={10_000}
+                value={stake}
+                onChange={e => setStake(Math.max(10_000, Number(e.target.value)))}
+                className="input-field font-mono text-sm"
+              />
+            </div>
+          )}
+
+          {pickedType === 'mini_ransom' && (
+            <div>
+              <div className="text-[10px] text-gold/80 mb-1">Долг для выкупного стола</div>
+              <select
+                className="input-field text-xs"
+                value={debtId}
+                onChange={e => setDebtId(e.target.value)}
+              >
+                <option value="">— выбрать долг —</option>
+                {debts.map(d => {
+                  const debtor = state.participants.find(p => p.id === d.debtor_id);
+                  return (
+                    <option key={d.id} value={d.id}>
+                      {debtor?.display_name ?? d.debtor_id} — {d.amount.toLocaleString('ru-RU')}
+                      {d.status === 'overdue' ? ' (просрочен)' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+
+          {pickedType !== 'mini_ransom' && (
+            <div>
+              <div className="text-[10px] text-gold/80 mb-1">
+                Игроки ({selected.size}/{meta.maxPlayers}, мин {meta.minPlayers})
+              </div>
+              <div className="max-h-44 overflow-y-auto space-y-1 glass p-2">
+                {eligible.map(p => {
+                  const isSelected = selected.has(p.id);
+                  const limitReached = !isSelected && selected.size >= meta.maxPlayers;
+                  return (
+                    <label
+                      key={p.id}
+                      className={cn(
+                        'flex items-center gap-2 p-1.5 rounded-lg cursor-pointer active:bg-white/5',
+                        limitReached && 'opacity-40 cursor-not-allowed',
+                      )}
+                    >
+                      <input
+                        type="checkbox" checked={isSelected} disabled={limitReached}
+                        onChange={() => togglePart(p.id)}
+                        className="w-4 h-4 accent-gold"
+                      />
+                      <CharacterIcon participant={p} size="xs" ringless />
+                      <span className="text-sm flex-1">{p.display_name}</span>
+                      <Yen amount={p.balance} className="text-[10px] text-muted-foreground" iconClass="w-3 h-3" />
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="glass crimson-border p-2 text-xs text-red-300 text-center">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setOpen(false)} className="btn-secondary">Отмена</button>
+            <button
+              onClick={create}
+              disabled={busy}
+              className={cn('btn-primary', busy && 'opacity-50')}
+            >{busy ? '...' : 'Создать'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Лёгкая копия shuffleRansomCards (чтобы не тащить импорт в этот файл)
+function shuffleRansomCardsAdminCopy(): ('cancel_half' | 'double' | 'postpone')[] {
+  const arr: ('cancel_half' | 'double' | 'postpone')[] = ['cancel_half', 'double', 'postpone'];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }

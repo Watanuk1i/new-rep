@@ -39,3 +39,7 @@ next-env.d.ts
 
 # git internal scratch
 .git/COMMIT_MSG.tmp
+
+# Spec drafts
+claude_opus_*.txt
+build.log

@@ -102,7 +102,7 @@ export interface SuperGame {
   entry_fee: number;
   bank: number;
   winner_id?: string | null;
-  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | DebtTowerState | DebtAuctionState | RebellionState | EliteTrialState | Record<string, any>;
+  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | DebtTowerState | DebtAuctionState | RebellionState | EliteTrialState | ThroneState | MiniGameRedBlackState | MiniGameBlindBidState | MiniGameLiarDiceState | MiniGameDespair21State | MiniGameRansomState | Record<string, any>;
   created_at: string;
 }
 
@@ -484,6 +484,154 @@ export interface EliteTrialState {
     | 'verdict'
     | 'finished'
     | 'cancelled';
+}
+
+// ===== Трон Селестии (финальная супер-игра) =====
+export type ThroneCard = 'emperor' | 'citizen' | 'pet';
+export type ThroneSide = 'celestia' | 'challenger';
+export type ThronePhase = 'first_half' | 'second_half' | 'sudden_death';
+export type ThroneAdvantageType = 'peek_card' | 'change_card' | 'replay_loss' | 'block_celestia_privilege';
+export type CelestiaPrivilegeAction = 'peek_card' | 'force_replay' | 'block_card';
+
+export interface ThroneRound {
+  number: number;
+  phase: ThronePhase;
+  /** Доступные карты на момент раунда (после сжигания использованных). */
+  celestia_deck: ThroneCard[];
+  challenger_deck: ThroneCard[];
+  celestia_card?: ThroneCard | null;
+  challenger_card?: ThroneCard | null;
+  status: 'card_selection' | 'advantage_phase' | 'reveal' | 'resolved';
+  winner?: 'celestia' | 'challenger' | 'draw' | null;
+  celestia_used_advantage?: ThroneAdvantageType | null;
+  challenger_used_advantage?: ThroneAdvantageType | null;
+  /** Если Селестия использовала привилегию — какое именно действие. */
+  celestia_privilege_action?: CelestiaPrivilegeAction | null;
+  /** Если Селестия посмотрела/заблокировала карту, какая. */
+  celestia_peeked_card?: ThroneCard | null;
+  challenger_blocked_card?: ThroneCard | null;
+  resolved_at?: string;
+}
+
+export interface ThroneFundContribution {
+  id: string;
+  player_id: string;
+  side: ThroneSide;
+  amount: number;
+  created_at: string;
+}
+
+export interface ThroneAdvantagePurchase {
+  id: string;
+  side: ThroneSide;
+  advantage_type: ThroneAdvantageType;
+  cost: number;
+  used_in_round?: number | null;
+  created_at: string;
+}
+
+export interface ThroneState {
+  celestia_id: string;                                 // 'p-queen'
+  challenger_id: string;
+  celestia_supporter_ids: string[];
+  challenger_supporter_ids: string[];
+  neutral_ids: string[];
+  celestia_fund: number;
+  challenger_fund: number;
+  celestia_score: number;
+  challenger_score: number;
+  current_round: number;                                // 0..10+ (sudden death продолжает счёт)
+  total_rounds: number;                                 // = 10
+  rounds: ThroneRound[];
+  contributions: ThroneFundContribution[];
+  purchases: ThroneAdvantagePurchase[];
+  celestia_privilege_used: boolean;
+  /** Если Претендент купил блок привилегии на следующий раунд. */
+  block_celestia_next_round: boolean;
+  /** Замена карты Селестией / Претендентом — флаг, сколько раз использовано (правил без лимита нет, но мы трекаем). */
+  replay_used_celestia: boolean;
+  replay_used_challenger: boolean;
+  winner?: ThroneSide | null;
+  final_outcome?: 'celestia_wins' | 'new_director' | 'rebellion_wins' | null;
+  status:
+    | 'scheduled'
+    | 'challenger_setup'
+    | 'side_selection'
+    | 'fund_collection'
+    | 'active'
+    | 'card_selection'
+    | 'advantage_phase'
+    | 'reveal'
+    | 'round_result'
+    | 'sudden_death'
+    | 'final_choice'
+    | 'finished'
+    | 'cancelled';
+}
+
+// ===== Малые игры (быстрые мини-игры из ТЗ) =====
+export type MiniGameKind =
+  | 'mini_red_black'
+  | 'mini_blind_bid'
+  | 'mini_liar_dice'
+  | 'mini_despair_21'
+  | 'mini_ransom';
+
+export interface MiniGameRedBlackState {
+  stake: number;
+  fee_paid: Record<string, number>;
+  /** participantId → 'red' | 'black' */
+  choices: Record<string, 'red' | 'black'>;
+  result?: 'red' | 'black' | null;
+  winner_ids?: string[];
+  status: 'waiting_players' | 'active' | 'revealing' | 'finished' | 'cancelled';
+}
+export interface MiniGameBlindBidState {
+  fee_paid: Record<string, number>;
+  /** Тайные суммы 10–100k. */
+  bids: Record<string, number>;
+  status: 'waiting_players' | 'active' | 'revealing' | 'finished' | 'cancelled';
+  winner_id?: string | null;
+}
+export interface MiniGameLiarDiceState {
+  stake: number;
+  fee_paid: Record<string, number>;
+  /** Кубики игроков 3 шт., скрыты до раскрытия. */
+  dice: Record<string, number[]>;
+  /** Очерёдность ходов — порядок объявлений. */
+  turn_order: string[];
+  current_turn_idx: number;
+  /** Текущая заявка. */
+  claim?: { count: number; face: number; player_id: string } | null;
+  /** Кто сказал «Ложь!» — после этого раскрытие. */
+  liar_caller_id?: string | null;
+  status: 'waiting_players' | 'active' | 'revealing' | 'finished' | 'cancelled';
+  winner_id?: string | null;
+}
+export interface MiniGameDespair21State {
+  stake: number;
+  fee_paid: Record<string, number>;
+  hands: Record<string, number[]>;
+  stand: Record<string, boolean>;
+  dealer_hand: number[];
+  status: 'waiting_players' | 'active' | 'revealing' | 'finished' | 'cancelled';
+  results?: Record<string, 'win' | 'lose' | 'push'> | null;
+}
+export interface MiniGameRansomState {
+  /** Фиксированный долг, который разыгрывается. */
+  debt_id: string;
+  debt_amount_initial: number;
+  /** Сторона хозяина/Мондо/Казны — может убрать одну карту. */
+  remover_id?: string | null;
+  removed_card_index?: number | null;
+  /** Перемешанные карты — хранятся в скрытом порядке. */
+  cards_order: ('cancel_half' | 'double' | 'postpone')[];
+  /** Должник выбирает индекс среди НЕубранных карт. */
+  picked_card_index?: number | null;
+  picked_card?: 'cancel_half' | 'double' | 'postpone' | null;
+  new_debt_amount?: number;
+  postponed?: boolean;
+  status: 'waiting_remove' | 'waiting_pick' | 'finished' | 'cancelled';
 }
 
 export interface AcademyEvent {
