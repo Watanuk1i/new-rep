@@ -6,8 +6,9 @@ import Link from 'next/link';
 import { useStore, uid } from '@/lib/store/StoreProvider';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen, YenIcon } from '@/components/ui/Yen';
-import { cn, getStatusLabel, SPRITE_SHEETS } from '@/lib/utils';
+import { cn, getStatusLabel, SPRITE_SHEETS, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
+import { payoutFromTreasury } from '@/lib/store/tx';
 import type { Participant, ParticipantStatus, PariMarket, Debt, Rumor, ContentBlock } from '@/lib/store/types';
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,7 @@ const TABS = [
   { key: 'accounts', label: 'Аккаунты', icon: '🔑' },
   { key: 'pari', label: 'Пари', icon: '💰' },
   { key: 'super-games', label: 'Супер игры', icon: '🏟️' },
+  { key: 'treasury', label: 'Казна', icon: '🏛️' },
   { key: 'debts', label: 'Долги', icon: '📜' },
   { key: 'rumors', label: 'Слухи', icon: '👁️' },
   { key: 'icons', label: 'Иконки', icon: '🎭' },
@@ -88,6 +90,7 @@ function AdminInner() {
       {tab === 'accounts' && <AccountsTab />}
       {tab === 'pari' && <PariAdmin />}
       {tab === 'super-games' && <SuperGamesAdmin />}
+      {tab === 'treasury' && <TreasuryTab />}
       {tab === 'debts' && <DebtsAdmin />}
       {tab === 'rumors' && <RumorsAdmin />}
       {tab === 'icons' && (editingParticipant
@@ -100,7 +103,7 @@ function AdminInner() {
 
 function Overview() {
   const { state } = useStore();
-  const players = state.participants.filter(p => p.status !== 'gm');
+  const players = state.participants.filter(p => isPlayer(p));
   const totalBank = players.reduce((s, p) => s + p.balance, 0);
   const activePari = state.pari.filter(m => m.status === 'open' || m.status === 'awaiting_confirmation').length;
   const awaitingPari = state.pari.filter(m => m.status === 'awaiting_confirmation').length;
@@ -232,7 +235,7 @@ function AnnounceTab() {
 
 function ParticipantsList({ onEdit }: { onEdit: (id: string) => void }) {
   const { state } = useStore();
-  const list = state.participants.filter(p => p.status !== 'gm');
+  const list = state.participants.filter(p => isPlayer(p));
   return (
     <div className="space-y-2">
       {list.map(p => (
@@ -260,7 +263,7 @@ function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
   const [ownerId, setOwnerId] = useState(p?.pet_owner_id || '');
 
   if (!p) return null;
-  const others = state.participants.filter(x => x.status !== 'gm' && x.id !== id);
+  const others = state.participants.filter(x => isPlayer(x) && x.id !== id);
 
   const save = async () => {
     if (!sb) return;
@@ -367,25 +370,22 @@ function PariAdmin() {
     const winners = (m.bets || []).filter(b => b.option_id === optionId);
     const winningTotal = winners.reduce((s, b) => s + b.amount, 0);
 
-    // Комиссия создателю
-    const creator = state.participants.find(p => p.id === m.creator_id);
-    if (creator && commission > 0) {
-      await sb.from('participants').update({ balance: creator.balance + commission }).eq('id', creator.id);
+    // Комиссия создателю — Казна студсовета удерживает её и выплачивает.
+    if (commission > 0) {
+      await payoutFromTreasury(m.creator_id, commission, `Комиссия пари: ${m.title}`, '/pari');
     }
-    // Победителям выплата
+    // Победителям выплата из Казны (где лежал пул).
     if (winningTotal > 0) {
       for (const w of winners) {
         const payout = Math.floor((w.amount / winningTotal) * payoutPool);
-        const part = state.participants.find(p => p.id === w.participant_id);
-        if (part) {
-          await sb.from('participants').update({ balance: part.balance + payout }).eq('id', part.id);
-          await sb.from('notifications').insert({
-            id: uid('n'), recipient_id: part.id, type: 'bet_won',
-            title: 'Ваша ставка выиграла!',
-            body: `+${payout.toLocaleString('ru-RU')} ейнов · ${m.title}`,
-            link_url: '/pari', is_read: false,
-          });
-        }
+        if (payout <= 0) continue;
+        await payoutFromTreasury(w.participant_id, payout, `Выигрыш пари: ${m.title}`, '/pari');
+        await sb.from('notifications').insert({
+          id: uid('n'), recipient_id: w.participant_id, type: 'bet_won',
+          title: 'Ваша ставка выиграла!',
+          body: `+${payout.toLocaleString('ru-RU')} ейнов · ${m.title}`,
+          link_url: '/pari', is_read: false,
+        });
       }
     }
     // Уведомления проигравшим
@@ -408,8 +408,7 @@ function PariAdmin() {
     if (!sb) return;
     if (!confirm('Отменить и вернуть все ставки?')) return;
     for (const b of (m.bets || [])) {
-      const part = state.participants.find(p => p.id === b.participant_id);
-      if (part) await sb.from('participants').update({ balance: part.balance + b.amount }).eq('id', part.id);
+      await payoutFromTreasury(b.participant_id, b.amount, `Возврат ставки: ${m.title}`, '/pari');
     }
     await sb.from('pari').update({ status: 'cancelled' }).eq('id', m.id);
   };
@@ -481,11 +480,19 @@ function SuperGamesAdmin() {
   const [description, setDescription] = useState('');
   const [rules, setRules] = useState('');
   const [stakes, setStakes] = useState('');
+  const [entryFee, setEntryFee] = useState(100000);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const others = state.participants.filter(p => p.status !== 'gm');
+  const others = state.participants.filter(p => isPlayer(p));
+
+  const minPlayers = type === 'nine_bullets' ? 7 : type === 'minority_rule' ? 2 : 1;
+  const isLiveType = type === 'minority_rule' || type === 'nine_bullets';
 
   const create = async () => {
     if (!sb || !title.trim()) return;
+    if (selected.size < minPlayers) {
+      alert(`Для типа «${type}» нужно минимум ${minPlayers} участников.`);
+      return;
+    }
     const id = uid('sg');
     const ids = Array.from(selected);
     await sb.from('super_games').insert({
@@ -496,8 +503,10 @@ function SuperGamesAdmin() {
       status: 'scheduled',
       participant_ids: ids,
       spectator_bets_enabled: true,
+      entry_fee: type === 'minority_rule' ? entryFee : 0,
+      bank: 0,
+      state: {},
     });
-    // Уведомление участникам
     if (ids.length > 0) {
       await sb.from('notifications').insert(ids.map(pid => ({
         id: uid('n'), recipient_id: pid, type: 'big_game_invite',
@@ -524,6 +533,8 @@ function SuperGamesAdmin() {
 
   return (
     <div className="space-y-3">
+      <CardShipCreator />
+
       <button onClick={() => setCreating(!creating)} className="btn-primary w-full">
         {creating ? '✕ Отмена' : '+ Создать Супер игру'}
       </button>
@@ -532,23 +543,44 @@ function SuperGamesAdmin() {
         <div className="glass-strong p-4 space-y-3 animate-slide-down">
           <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Название" className="input-field" />
           <select value={type} onChange={e => setType(e.target.value)} className="input-field">
-            <option value="minority_rule">Правило меньшинства</option>
+            <option value="minority_rule">Правило меньшинства (live · от 2 чел.)</option>
+            <option value="nine_bullets">Комната девяти патронов (live · от 7 чел.)</option>
             <option value="collar">Игра ошейника</option>
             <option value="status_tower">Башня статуса</option>
             <option value="queen_throne">Трон Селестии</option>
             <option value="emperor">Император, гражданин, раб</option>
             <option value="custom">Своя</option>
           </select>
+          {isLiveType && (
+            <div className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2 py-1.5">
+              ⚡ Интерактивная игра — управление пройдёт через комнату /super-games/[id].
+              {type === 'nine_bullets' && ' Деньги ходят через Казну студсовета и напрямую между игроками.'}
+            </div>
+          )}
           <input value={description} onChange={e => setDescription(e.target.value)}
             placeholder="Описание" className="input-field" />
           <textarea value={rules} onChange={e => setRules(e.target.value)}
             placeholder="Правила" className="input-field min-h-[80px] resize-none" />
           <input value={stakes} onChange={e => setStakes(e.target.value)}
-            placeholder="Ставки" className="input-field" />
+            placeholder="Ставки (для информации игрокам)" className="input-field" />
+
+          {type === 'minority_rule' && (
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
+                Взнос с каждого участника (ейн)
+              </label>
+              <input type="number" value={entryFee} min={0} step={10000}
+                onChange={e => setEntryFee(Math.max(0, Number(e.target.value)))}
+                className="input-field font-mono" />
+              <p className="text-[10px] text-muted mt-1">
+                Списывается при старте игры в банк. У кого нет — ведущий получит алерт.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
-              Пригласить участников ({selected.size})
+              Пригласить участников ({selected.size}{minPlayers > 1 && ` / мин ${minPlayers}`})
             </label>
             <div className="max-h-48 overflow-y-auto space-y-1 glass p-2">
               {others.map(p => (
@@ -582,6 +614,102 @@ function SuperGamesAdmin() {
             </div>
           </Link>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function TreasuryTab() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const treasury = state.participants.find(p => p.id === 'p-treasury');
+  const [log, setLog] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      if (!sb) return;
+      setLoading(true);
+      const { data } = await sb.from('history')
+        .select('*').eq('participant_id', 'p-treasury')
+        .order('created_at', { ascending: false }).limit(100);
+      if (alive) { setLog(data || []); setLoading(false); }
+    };
+    load();
+    const id = setInterval(load, 7000);
+    return () => { alive = false; clearInterval(id); };
+  }, [sb]);
+
+  // Долги к Казне (entire system)
+  const treasuryCredits = state.debts.filter(d => d.creditor_id === 'p-treasury' && d.status === 'active');
+  const totalOwedToTreasury = treasuryCredits.reduce((s, d) => s + d.amount, 0);
+
+  // Income/outcome за период
+  const totalIncome  = log.filter(h => h.action === 'tx_in').reduce((s, h) => s + (h.amount || 0), 0);
+  const totalOutcome = log.filter(h => h.action === 'tx_out').reduce((s, h) => s - (h.amount || 0), 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="glass-strong gold-border p-4">
+        <div className="text-[10px] uppercase tracking-widest text-amber-300/80 mb-1">🏛️ Казна студсовета</div>
+        <Yen amount={treasury?.balance || 0} full className="text-3xl text-amber-200" iconClass="w-7 h-7" />
+        <p className="text-[10px] text-muted mt-2">
+          Системный кошелёк: взносы, штрафы, комиссии, выплаты против манекенов.
+          Не участвует в прямом обмене между игроками.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Card label="Доход (последние)" value={totalIncome} icon="↘️" />
+        <Card label="Расход (последние)" value={totalOutcome} icon="↗️" />
+      </div>
+
+      {treasuryCredits.length > 0 && (
+        <div className="glass p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] uppercase tracking-widest text-gold/70">📜 Должники Казны</div>
+            <Yen amount={totalOwedToTreasury} className="text-base text-red-300" iconClass="w-3 h-3" />
+          </div>
+          <div className="space-y-1">
+            {treasuryCredits.map(d => {
+              const debtor = state.participants.find(p => p.id === d.debtor_id);
+              return (
+                <div key={d.id} className="flex items-center justify-between text-xs py-1">
+                  <span className="truncate">{debtor?.display_name || d.debtor_id}</span>
+                  <span className="text-red-300 font-mono">−{d.amount.toLocaleString('ru-RU')}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="glass p-3">
+        <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-2">
+          📒 Журнал операций {loading && '(обновление...)'}
+        </div>
+        {log.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-3">Операций пока нет.</p>
+        ) : (
+          <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+            {log.map(h => (
+              <div key={h.id} className="flex items-center gap-2 text-xs py-1.5 border-b border-white/5 last:border-0">
+                <span className={cn('w-12 font-mono text-[10px] uppercase',
+                  h.action === 'tx_in' ? 'text-emerald-300' : 'text-red-300')}>
+                  {h.action === 'tx_in' ? 'INC' : 'OUT'}
+                </span>
+                <span className="flex-1 truncate text-muted-foreground">
+                  {h.description || '—'}
+                </span>
+                <span className={cn('font-mono shrink-0',
+                  (h.amount || 0) > 0 ? 'text-emerald-300' : 'text-red-300')}>
+                  {(h.amount || 0) > 0 ? '+' : ''}{(h.amount || 0).toLocaleString('ru-RU')}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -687,7 +815,7 @@ function IconsList({ onEdit }: { onEdit: (id: string) => void }) {
         Тапните на персонажа, чтобы настроить иконку.
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-        {state.participants.filter(p => p.status !== 'gm').map(p => (
+        {state.participants.filter(p => isPlayer(p)).map(p => (
           <button key={p.id} onClick={() => onEdit(p.id)}
             className="glass p-2 flex flex-col items-center gap-1 text-center active:scale-95">
             <CharacterIcon participant={p} size="md" ringless={p.status === 'queen'} />
@@ -1004,6 +1132,206 @@ function AccountsTab() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+
+
+// =====================================================================
+// КАРТОЧНЫЙ КОРАБЛЬ — создание Большой игры
+// =====================================================================
+// Создаёт связку: super_games (для отображения в списке) + card_ship_games
+// (с собственным состоянием — карты/звёзды/банк/дуэли/рынок).
+// Игроки выбираются вручную или скопом (все активные кроме Селестии и Казны).
+// Для запуска (списания ¥100k и раздачи карт) используется кнопка
+// «Запустить игру» уже на странице самой игры.
+
+const CARDSHIP_DEFAULT_ENTRY_FEE = 100_000;
+
+function CardShipCreator() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [open, setOpen] = useState(false);
+  const [entryFee, setEntryFee] = useState(CARDSHIP_DEFAULT_ENTRY_FEE);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Селестия (queen) НЕ участвует — она наблюдатель. Казна — системный аккаунт.
+  const eligible = state.participants.filter(p => isPlayer(p) && p.is_active);
+
+  const togglePart = (pid: string) => {
+    const next = new Set(selected);
+    if (next.has(pid)) next.delete(pid); else next.add(pid);
+    setSelected(next);
+  };
+
+  const selectAll = () => setSelected(new Set(eligible.map(p => p.id)));
+  const clearAll = () => setSelected(new Set());
+
+  const create = async () => {
+    setError(null);
+    const ids = Array.from(selected);
+    if (ids.length < 2) {
+      setError('Нужно минимум 2 игрока (рекомендуется 8–14).');
+      return;
+    }
+    if (entryFee <= 0) {
+      setError('Входная ставка должна быть больше 0.');
+      return;
+    }
+    if (!sb) return;
+    setBusy(true);
+
+    const sgId = uid('sg');
+    const csId = uid('cs');
+
+    // 1) super_games — чтобы корабль появился в общем списке Больших игр
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: 'Карточный корабль',
+      type: 'card_ship',
+      description: 'Камень — Ножницы — Бумага. Сделки, дуэли и блеф.',
+      rules:
+        'Каждый игрок начинает с 9 карт (3 Камня + 3 Ножниц + 3 Бумаги) и 3 звёзд.\n' +
+        'Цель: к концу игры остаться с 0 карт и не менее 3 звёзд.\n' +
+        'Дуэли: тайный выбор → раскрытие. Победителю +1 звезда от проигравшего.\n' +
+        'Рынок: можно продавать и покупать карты и звёзды за ейны.\n' +
+        'В конце выжившие делят банк поровну.',
+      stakes: `Входная ставка: ¥${entryFee.toLocaleString('ru-RU')} с каждого игрока в банк`,
+      status: 'scheduled',
+      participant_ids: ids,
+      spectator_bets_enabled: false,
+      entry_fee: entryFee,
+      bank: 0,
+      state: {},
+    });
+
+    // 2) card_ship_games — собственное состояние игры
+    await sb.from('card_ship_games').insert({
+      id: csId,
+      super_game_id: sgId,
+      status: 'collecting_stakes',
+      entry_fee: entryFee,
+      bank: 0,
+      participant_ids: ids,
+      winner_ids: [],
+    });
+
+    // 3) Уведомление приглашённым
+    await sb.from('notifications').insert(ids.map(pid => ({
+      id: uid('n'),
+      recipient_id: pid,
+      type: 'big_game_invite',
+      title: 'Карточный корабль',
+      body: `Вас пригласили. Входная ставка: ¥${entryFee.toLocaleString('ru-RU')}`,
+      link_url: `/super-games/${sgId}`,
+      is_read: false,
+    })));
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'big_game_start',
+      title: 'Карточный корабль — собирается',
+      body: `Игроков: ${ids.length}. Банк сформируется при запуске.`,
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+    setOpen(false);
+    setSelected(new Set());
+    setEntryFee(CARDSHIP_DEFAULT_ENTRY_FEE);
+  };
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">🎴</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Большая игра</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            Карточный корабль
+          </div>
+        </div>
+      </div>
+
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="btn-primary w-full">
+          + Создать Карточный корабль
+        </button>
+      ) : (
+        <div className="space-y-3 animate-slide-down">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
+              Входная ставка (ейн)
+            </label>
+            <input
+              type="number"
+              value={entryFee}
+              onChange={e => setEntryFee(Math.max(0, Number(e.target.value)))}
+              className="input-field font-mono"
+              min={1}
+            />
+            <div className="grid grid-cols-4 gap-1.5 mt-2">
+              {[50_000, 100_000, 200_000, 500_000].map(v => (
+                <button key={v} onClick={() => setEntryFee(v)}
+                  className={cn('px-2 py-2 text-[11px] rounded-lg border font-mono active:scale-95',
+                    entryFee === v ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/60 border-white/8')}>
+                  {v >= 1e6 ? `${v / 1e6}M` : `${v / 1000}K`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gold">
+                Игроки ({selected.size})
+              </label>
+              <div className="flex gap-2">
+                <button onClick={selectAll} className="text-[10px] text-gold underline">все</button>
+                <button onClick={clearAll} className="text-[10px] text-muted underline">сбросить</button>
+              </div>
+            </div>
+            <div className="text-[10px] text-muted mb-2">
+              Селестия и Казна не участвуют — они наблюдатели.
+            </div>
+            <div className="max-h-56 overflow-y-auto space-y-1 glass p-2">
+              {eligible.map(p => (
+                <label key={p.id} className="flex items-center gap-2 p-1.5 rounded-lg cursor-pointer active:bg-white/5">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(p.id)}
+                    onChange={() => togglePart(p.id)}
+                    className="w-4 h-4 accent-gold"
+                  />
+                  <CharacterIcon participant={p} size="xs" ringless />
+                  <span className="text-sm flex-1">{p.display_name}</span>
+                  <Yen amount={p.balance} className="text-[10px] text-muted-foreground" iconClass="w-3 h-3" />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-[10px] text-muted leading-relaxed bg-white/5 rounded-lg px-3 py-2 border border-white/5">
+            После создания игра будет в статусе «сбор ставок». Запустить и списать
+            ¥{entryFee.toLocaleString('ru-RU')} с каждого можно будет на странице игры.
+          </div>
+
+          {error && (
+            <div className="glass crimson-border p-2 text-xs text-red-300 text-center">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setOpen(false)} className="btn-secondary">Отмена</button>
+            <button onClick={create} disabled={busy} className={cn('btn-primary', busy && 'opacity-50')}>
+              {busy ? '...' : '🎴 Создать'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

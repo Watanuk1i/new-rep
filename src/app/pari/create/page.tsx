@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useStore, uid } from '@/lib/store/StoreProvider';
-import { cn } from '@/lib/utils';
+import { cn, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 
 export default function CreatePariPage() {
@@ -43,7 +43,7 @@ export default function CreatePariPage() {
 
     // Уведомление всем
     const targets = state.participants.filter(p =>
-      p.status !== 'gm' && p.id !== currentUser.id && p.is_active
+      isPlayer(p) && p.id !== currentUser.id && p.is_active
     );
     if (targets.length > 0) {
       await sb.from('notifications').insert(targets.map(t => ({

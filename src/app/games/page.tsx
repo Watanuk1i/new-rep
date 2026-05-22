@@ -43,10 +43,13 @@ export default function GamesPage() {
 
   const accept = async (ch: GameChallenge) => {
     if (!currentUser || !sb) return;
-    // Валидация баланса: нельзя принять вызов если денег меньше чем ставка
+    // Принять можно даже с нехваткой — проигрыш создаст долг победителю.
     if (currentUser.balance < ch.stake_amount) {
-      alert(`Недостаточно средств: у вас ${currentUser.balance.toLocaleString('ru-RU')} ейн, а ставка ${ch.stake_amount.toLocaleString('ru-RU')}`);
-      return;
+      const ok = confirm(
+        `У вас ${currentUser.balance.toLocaleString('ru-RU')} ейн, ставка ${ch.stake_amount.toLocaleString('ru-RU')}. ` +
+        `В случае проигрыша вы уйдёте в долг сопернику. Продолжить?`
+      );
+      if (!ok) return;
     }
     await sb.from('challenges').update({
       status: 'accepted', opponent_id: currentUser.id,
@@ -123,10 +126,10 @@ export default function GamesPage() {
                   </div>
                 </div>
                 {currentUser ? (
-                  <button onClick={() => accept(ch)} disabled={insufficient}
-                    className={cn('btn-primary text-xs px-4', insufficient && 'opacity-40 cursor-not-allowed')}
+                  <button onClick={() => accept(ch)}
+                    className={cn('btn-primary text-xs px-4', insufficient && 'btn-danger')}
                     style={{ minHeight: 40 }}>
-                    {insufficient ? 'Мало ейн' : 'Принять'}
+                    {insufficient ? 'Принять (в долг)' : 'Принять'}
                   </button>
                 ) : (
                   <Link href="/login" className="btn-secondary text-xs px-3" style={{ minHeight: 40 }}>Войти</Link>

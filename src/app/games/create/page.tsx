@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useStore, uid } from '@/lib/store/StoreProvider';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen } from '@/components/ui/Yen';
-import { cn } from '@/lib/utils';
+import { cn, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import type { MiniGameType } from '@/lib/store/types';
 
@@ -39,7 +39,7 @@ function Inner() {
   const sb = getSupabase();
 
   const others = state.participants.filter(p =>
-    p.status !== 'gm' && p.id !== currentUser?.id && p.is_active
+    isPlayer(p) && p.id !== currentUser?.id && p.is_active
   );
 
   const canSubmit = gameType && (isOpen || opponentId) && stakeAmount > 0
@@ -72,7 +72,7 @@ function Inner() {
     } else {
       // Открытый вызов — уведомление всем игрокам кроме создателя
       const targets = state.participants.filter(p =>
-        p.status !== 'gm' && p.id !== currentUser.id && p.is_active
+        isPlayer(p) && p.id !== currentUser.id && p.is_active
       );
       if (sb && targets.length > 0) {
         await sb.from('notifications').insert(targets.map(t => ({

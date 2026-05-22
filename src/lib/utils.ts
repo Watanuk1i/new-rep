@@ -29,6 +29,7 @@ export function getStatusLabel(status: string): string {
     queen: 'Королева',
     gm: 'Ведущий',
     collector: 'Коллектор',
+    treasury: 'Казна',
   };
   return labels[status] || status;
 }
@@ -42,8 +43,19 @@ export function getStatusColor(status: string): string {
     queen: 'bg-gradient-to-r from-gold/25 to-amber-500/25 text-gold-light border-gold/50',
     gm: 'bg-white/10 text-white/80 border-white/20',
     collector: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
+    treasury: 'bg-amber-500/15 text-amber-200 border-amber-500/30',
   };
   return colors[status] || 'bg-gray-500/20 text-gray-400';
+}
+
+/** Признак "системного" участника (Ведущий или Казна) — таких не показываем в списках. */
+export function isSystemParticipant(p: { status?: string; id?: string }): boolean {
+  return p.status === 'gm' || p.status === 'treasury' || p.id === 'p-gm' || p.id === 'p-treasury';
+}
+
+/** Реальный игрок (не Ведущий, не Казна). Фильтр для списков и игр. */
+export function isPlayer(p: { status?: string; id?: string }): boolean {
+  return !isSystemParticipant(p);
 }
 
 export function timeAgo(input: number | string): string {

@@ -20,6 +20,7 @@ const TITLES: Record<string, string> = {
   '/pari': 'Пари',
   '/pari/create': 'Создать пари',
   '/super-games': 'Супер игры',
+  '/transfers': 'Переводы',
   '/notifications': 'События',
   '/rumors': 'Слухи',
   '/debts': 'Долги',
@@ -95,12 +96,18 @@ export function TopBar() {
           </div>
 
           {/* Баланс в шапке для авторизованного пользователя */}
-          {currentUser && currentUser.status !== 'gm' && (
+          {currentUser && currentUser.status !== 'gm' && currentUser.status !== 'treasury' && (
             <Link
               href="/account"
-              className="hidden xs:flex items-center gap-2 px-2 py-1 rounded-xl bg-white/5 border border-white/8"
+              className={cn(
+                'hidden xs:flex items-center gap-2 px-2 py-1 rounded-xl border',
+                currentUser.balance < 0
+                  ? 'bg-red-500/10 border-red-500/30'
+                  : 'bg-white/5 border-white/8'
+              )}
               aria-label="Аккаунт и баланс"
             >
+              {currentUser.balance < 0 && <span className="text-xs">📜</span>}
               <Yen amount={currentUser.balance} className="text-xs" iconClass="w-4 h-4" />
             </Link>
           )}
@@ -156,7 +163,7 @@ export function TopBar() {
                   <div className="text-[10px] text-muted-foreground">
                     {getStatusLabel(currentUser.status)}
                   </div>
-                  {currentUser.status !== 'gm' && (
+                  {currentUser.status !== 'gm' && currentUser.status !== 'treasury' && (
                     <Yen amount={currentUser.balance} className="text-xs text-gold mt-0.5" />
                   )}
                 </div>
@@ -181,6 +188,7 @@ export function TopBar() {
               <DrawerLink href={`/profile/${currentUser.id}`} icon="👤" label="Профиль" pathname={pathname} />
             )}
             <DrawerLink href="/super-games" icon="🏟️" label="Супер игры" pathname={pathname} />
+            <DrawerLink href="/transfers" icon="💸" label="Переводы" pathname={pathname} />
             <DrawerLink href="/rumors" icon="👁️" label="Слухи" pathname={pathname} />
             <DrawerLink href="/debts" icon="📜" label="Долги" pathname={pathname} />
             <DrawerLink href="/rules" icon="⚖️" label="Правила" pathname={pathname} />

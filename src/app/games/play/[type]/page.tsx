@@ -15,6 +15,7 @@ import { useStore } from '@/lib/store/StoreProvider';
 import { Yen } from '@/components/ui/Yen';
 import { cn } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
+import { transferBetweenPlayers, chargeToTreasury, payoutFromTreasury } from '@/lib/store/tx';
 import type { MiniGameType, GameChallenge, Participant } from '@/lib/store/types';
 
 // ============================================================
@@ -110,15 +111,19 @@ async function finishMatch(opts: {
   const winner = winnerSide === 'creator' ? creator : opponent;
   const loser  = winnerSide === 'creator' ? opponent : creator;
 
-  await sb.from('participants').update({
-    balance: winner.balance + stake,
-    wins:    winner.wins + 1,
-  }).eq('id', winner.id);
+  // Прямой обмен между игроками. При нехватке средств у проигравшего
+  // RPC apply_transfer автоматически создаст долг проигравший→победитель.
+  await transferBetweenPlayers(
+    loser.id,
+    winner.id,
+    stake,
+    `${gameLabel} vs ${loser.display_name === winner.display_name ? winner.display_name : loser.display_name}`,
+    '/games'
+  );
 
-  await sb.from('participants').update({
-    balance: Math.max(0, loser.balance - stake),
-    losses:  loser.losses + 1,
-  }).eq('id', loser.id);
+  // wins/losses обновляем отдельно (не задевая баланс — он уже посчитан в RPC)
+  await sb.from('participants').update({ wins:   winner.wins   + 1 }).eq('id', winner.id);
+  await sb.from('participants').update({ losses: loser.losses  + 1 }).eq('id', loser.id);
 
   await addHistory(winner.id, 'game_win',
     `${gameLabel} vs ${loser.display_name}`, stake, `/games`);
@@ -925,9 +930,13 @@ function DemoMode({ type }: { type: MiniGameType }) {
       const details = won ? 'Удача на вашей стороне' : 'В этот раз не повезло';
       setResult({ won, details });
       setRolling(false);
-      const newBal = won ? currentUser.balance + stake : Math.max(0, currentUser.balance - stake);
+      // Тренировочные ставки идут против Казны студсовета.
+      if (won) {
+        await payoutFromTreasury(currentUser.id, stake, `${info.label} (тренировка)`, '/games');
+      } else {
+        await chargeToTreasury(currentUser.id, stake, `${info.label} (тренировка)`, '/games');
+      }
       await sb.from('participants').update({
-        balance: newBal,
         wins: won ? currentUser.wins + 1 : currentUser.wins,
         losses: won ? currentUser.losses : currentUser.losses + 1,
       }).eq('id', currentUser.id);

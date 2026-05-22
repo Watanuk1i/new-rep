@@ -5,7 +5,7 @@ import { useStore } from '@/lib/store/StoreProvider';
 import { ParticipantCard } from '@/components/cards/ParticipantCard';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen } from '@/components/ui/Yen';
-import { cn } from '@/lib/utils';
+import { cn, isPlayer } from '@/lib/utils';
 
 const FILTERS = [
   { key: 'all', label: 'Все', icon: '◉' },
@@ -27,7 +27,7 @@ export default function ParticipantsPage() {
   const [sortBy, setSortBy] = useState('balance');
   const [view, setView] = useState<'list' | 'grid'>('list');
 
-  const all = state.participants.filter(p => p.status !== 'gm');
+  const all = state.participants.filter(p => isPlayer(p));
   const queen = all.find(p => p.status === 'queen');
 
   const list = useMemo(() => {

@@ -7,6 +7,7 @@ import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen, YenIcon } from '@/components/ui/Yen';
 import { cn, timeAgo } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
+import { chargeToTreasury } from '@/lib/store/tx';
 import type { PariMarket, PariOption } from '@/lib/store/types';
 
 const STATUS_LABELS: Record<string, { text: string; cls: string }> = {
@@ -186,10 +187,7 @@ function BetModal({ market, option, onClose }: { market: PariMarket; option: Par
 
   const place = async () => {
     if (!currentUser || !sb) return;
-    if (amount < 1 || amount > currentUser.balance) {
-      alert('Недостаточно средств');
-      return;
-    }
+    if (amount < 1) return;
     setBusy(true);
     const newBet = {
       id: uid('bet'),
@@ -201,14 +199,19 @@ function BetModal({ market, option, onClose }: { market: PariMarket; option: Par
     const newBets = [...(market.bets || []), newBet];
     const { error } = await sb.from('pari').update({ bets: newBets }).eq('id', market.id);
     if (error) { setBusy(false); alert(error.message); return; }
-    await sb.from('participants')
-      .update({ balance: currentUser.balance - amount })
-      .eq('id', currentUser.id);
+    // Деньги уходят в Казну (пул пари). При нехватке — авто-долг Казне.
+    const tx = await chargeToTreasury(
+      currentUser.id,
+      amount,
+      `Ставка в пари: ${market.title}`,
+      '/pari'
+    );
+    if (!tx.ok) { setBusy(false); alert(tx.error || 'Ошибка перевода'); return; }
     if (!market.is_anonymous && market.creator_id !== currentUser.id) {
       await notify(market.creator_id, {
         type: 'bet_placed',
         title: 'Новая ставка на ваше пари',
-        body: `${currentUser.display_name} поставил ${amount.toLocaleString('ru-RU')} ейнов`,
+        body: `${currentUser.display_name} поставил ${amount.toLocaleString('ru-RU')} ейнов${tx.debtId ? ' (в долг Казне)' : ''}`,
         link_url: '/pari',
       });
     }
@@ -231,16 +234,17 @@ function BetModal({ market, option, onClose }: { market: PariMarket; option: Par
         <div className="flex items-center justify-center gap-2">
           <YenIcon className="w-6 h-6" />
           <input type="number" value={amount} onChange={e => setAmount(Math.max(0, Number(e.target.value)))}
-            min={1} max={currentUser?.balance || 0}
+            min={1}
             className="bg-transparent text-2xl font-mono font-bold text-gold text-center w-32 outline-none" />
         </div>
         {currentUser && (
           <div className="text-[10px] text-muted mt-1">
-            Доступно: <Yen amount={currentUser.balance} className="text-xs text-gold" iconClass="hidden" />
+            {currentUser.balance >= amount ? 'Доступно: ' : 'Не хватает — уйдёт в долг Казне: '}
+            <Yen amount={currentUser.balance} className={cn('text-xs', currentUser.balance < 0 && 'text-red-300')} iconClass="hidden" />
           </div>
         )}
       </div>
-      <input type="range" min={1} max={Math.min(currentUser?.balance || 1000, 5_000_000)} step={1000}
+      <input type="range" min={1} max={Math.max(amount, 5_000_000)} step={1000}
         value={amount} onChange={e => setAmount(Number(e.target.value))}
         className="w-full accent-gold mb-3" />
       <div className="grid grid-cols-4 gap-1.5 mb-4">

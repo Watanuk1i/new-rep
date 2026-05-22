@@ -15,6 +15,18 @@ const ICONS: Record<string, string> = {
   debt_given: '📤',
   debt_paid: '✅',
   debt_recovered: '💵',
+  transfer_sent: '💸',
+  transfer_received: '💰',
+  card_ship_stake: '🎴',
+  card_ship_duel_won: '⚔️',
+  card_ship_duel_lost: '⚔️',
+  card_ship_market_buy: '🛒',
+  card_ship_market_sell: '🛒',
+  card_ship_market_listing: '📋',
+  card_ship_market_cancel: '✖️',
+  card_ship_survived: '🏆',
+  card_ship_lost: '💀',
+  card_ship_refund: '↩️',
   custom: '✦',
 };
 

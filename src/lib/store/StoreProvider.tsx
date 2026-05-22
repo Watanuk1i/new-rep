@@ -8,12 +8,14 @@ import { getSupabase } from '@/lib/supabase/client';
 import type {
   Participant, GameChallenge, PariMarket, Debt, SuperGame,
   AcademyEvent, Notification, Rumor, ContentBlock, HistoryEntry, RoomState, Role,
+  Transfer, CardShipGame, CardShipState, CardShipDuel, CardShipListing,
 } from './types';
 
 const AUTH_KEY = 'academy-auth-v4';
 const CACHE_KEY = 'academy-cache-v1';
 // Если меняешь форму State — меняй и CACHE_VERSION, иначе старый кэш сломает рендер.
-const CACHE_VERSION = 1;
+// v3 = treasury (Казна, MinorityState, NineBulletsState) + transfers (Карточный корабль, рынок).
+const CACHE_VERSION = 3;
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 1 сутки — потом всё равно обновится из БД
 
 interface State {
@@ -28,6 +30,12 @@ interface State {
   content: ContentBlock[];
   history: HistoryEntry[];
   room: RoomState;
+  // V2: экономика и Карточный корабль
+  transfers: Transfer[];
+  cardShipGames: CardShipGame[];
+  cardShipStates: CardShipState[];
+  cardShipDuels: CardShipDuel[];
+  cardShipListings: CardShipListing[];
 }
 
 const initialState: State = {
@@ -42,6 +50,11 @@ const initialState: State = {
   content: [],
   history: [],
   room: { id: 'academy', season: 1, day: 1, updated_at: '' },
+  transfers: [],
+  cardShipGames: [],
+  cardShipStates: [],
+  cardShipDuels: [],
+  cardShipListings: [],
 };
 
 interface StoreCtx {
@@ -112,6 +125,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           rumors: s.rumors,
           content: s.content,
           room: s.room,
+          // V2 — экономика и Карточный корабль
+          transfers: s.transfers,
+          cardShipGames: s.cardShipGames,
+          cardShipStates: s.cardShipStates,
+          cardShipDuels: s.cardShipDuels,
+          cardShipListings: s.cardShipListings,
         };
         localStorage.setItem(CACHE_KEY, JSON.stringify({ v: CACHE_VERSION, t: Date.now(), state: toCache }));
       } catch {}
@@ -136,6 +155,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       sb.from('rumors').select('*').order('created_at', { ascending: false }),
       sb.from('content_blocks').select('*').order('sort_order', { ascending: true }),
       sb.from('room_state').select('*').eq('id', 'academy').maybeSingle(),
+      // V2: переводы и Карточный корабль
+      sb.from('transfers').select('*').order('created_at', { ascending: false }).limit(200),
+      sb.from('card_ship_games').select('*').order('created_at', { ascending: false }),
+      sb.from('card_ship_states').select('*'),
+      sb.from('card_ship_duels').select('*').order('created_at', { ascending: false }),
+      sb.from('card_ship_listings').select('*').order('created_at', { ascending: false }),
     ]);
     const pick = (i: number, fallback: any = []) => {
       const r = results[i];
@@ -156,6 +181,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         rumors: pick(6) || prev.rumors,
         content: pick(7) || prev.content,
         room: pick(8, null) || prev.room,
+        transfers: pick(9) || prev.transfers,
+        cardShipGames: pick(10) || prev.cardShipGames,
+        cardShipStates: pick(11) || prev.cardShipStates,
+        cardShipDuels: pick(12) || prev.cardShipDuels,
+        cardShipListings: pick(13) || prev.cardShipListings,
       };
       // Сохраняем в localStorage для следующего захода
       saveCache(next);
@@ -204,6 +234,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       { name: 'events', key: 'events' },
       { name: 'rumors', key: 'rumors' },
       { name: 'content_blocks', key: 'content' },
+      // V2
+      { name: 'transfers', key: 'transfers' },
+      { name: 'card_ship_games', key: 'cardShipGames' },
+      { name: 'card_ship_states', key: 'cardShipStates' },
+      { name: 'card_ship_duels', key: 'cardShipDuels' },
+      { name: 'card_ship_listings', key: 'cardShipListings' },
     ];
 
     for (const t of tables) {
@@ -336,7 +372,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const notifyAllPlayers: StoreCtx['notifyAllPlayers'] = useCallback(async (n, exceptId) => {
     if (!sb) return;
-    const targets = state.participants.filter(p => p.status !== 'gm' && p.id !== exceptId);
+    const targets = state.participants.filter(p => p.status !== 'gm' && p.status !== 'treasury' && p.id !== exceptId);
     if (targets.length === 0) return;
     const rows = targets.map(p => ({
       id: uid('n'),

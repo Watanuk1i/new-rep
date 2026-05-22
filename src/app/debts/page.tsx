@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useStore, uid } from '@/lib/store/StoreProvider';
 import { Yen } from '@/components/ui/Yen';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
-import { cn } from '@/lib/utils';
+import { cn, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
+import { TREASURY_ID, applyTransfer } from '@/lib/store/tx';
 import type { Debt } from '@/lib/store/types';
 
 export default function DebtsPage() {
@@ -39,6 +40,14 @@ export default function DebtsPage() {
   );
   const myActive = myDebts.filter(d => d.status === 'active' || d.status === 'requested');
   const closed = myDebts.filter(d => d.status === 'closed' || d.status === 'declined');
+
+  // Долги текущего игрока перед Казной — показываем отдельным блоком
+  const myTreasuryDebts = state.debts.filter(d =>
+    d.debtor_id === currentUser.id &&
+    d.creditor_id === TREASURY_ID &&
+    d.status === 'active'
+  );
+  const myTreasuryDebtTotal = myTreasuryDebts.reduce((s, d) => s + d.amount, 0);
 
   const list = tab === 'incoming' ? incoming : tab === 'mine' ? myActive : tab === 'closed' ? closed : [];
 
@@ -79,9 +88,9 @@ export default function DebtsPage() {
     const debtor = state.participants.find(p => p.id === d.debtor_id);
     const creditor = state.participants.find(p => p.id === d.creditor_id);
     if (!debtor || !creditor) return;
-    if (debtor.balance < d.amount) { alert('Недостаточно средств у должника'); return; }
-    await sb.from('participants').update({ balance: debtor.balance - d.amount }).eq('id', debtor.id);
-    await sb.from('participants').update({ balance: creditor.balance + d.amount }).eq('id', creditor.id);
+    // Перевод через RPC: если у должника не хватит — допишет долг (чего, по сути, не должно быть).
+    const tx = await applyTransfer(debtor.id, creditor.id, d.amount, `Возврат долга: ${d.description || 'Долг'}`, '/debts');
+    if (!tx.ok) { alert(tx.error || 'Ошибка'); return; }
     await sb.from('debts').update({ status: 'closed' }).eq('id', d.id);
     await addHistory(debtor.id, 'debt_paid', `Вернул долг ${creditor.display_name}`, -d.amount, '/debts');
     await addHistory(creditor.id, 'debt_recovered', `Получил возврат от ${debtor.display_name}`, d.amount, '/debts');
@@ -94,6 +103,29 @@ export default function DebtsPage() {
         <h1 className="font-heading text-xl font-bold text-red-200">Долги и обязательства</h1>
         <p className="text-xs text-muted-foreground mt-1">Запросы и подтверждения. Деньги переводятся только после согласия.</p>
       </div>
+
+      {myTreasuryDebts.length > 0 && (
+        <div className="glass-strong gold-border p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-amber-300/80">🏛️ Долг Казне студсовета</div>
+              <div className="text-xs text-muted-foreground">Системные списания, превысившие баланс</div>
+            </div>
+            <Yen amount={myTreasuryDebtTotal} className="text-base text-red-300" iconClass="w-4 h-4" />
+          </div>
+          <div className="space-y-1 mt-2">
+            {myTreasuryDebts.map(d => (
+              <div key={d.id} className="text-[11px] text-muted-foreground flex justify-between gap-2">
+                <span className="truncate">{d.description || 'Долг'}</span>
+                <span className="text-red-300 font-mono shrink-0">−{d.amount.toLocaleString('ru-RU')}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted mt-2">
+            Долг закрывается автоматически при поступлении средств (или ведущим вручную).
+          </p>
+        </div>
+      )}
 
       <div className="scroll-x">
         {[
@@ -156,10 +188,17 @@ export default function DebtsPage() {
                   )}
                   <span className="text-muted">→ должен</span>
                   {creditor && (
-                    <Link href={`/profile/${creditor.id}`} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gold/10 border border-gold/20">
-                      <CharacterIcon participant={creditor} size="xs" ringless />
-                      <span className="text-gold font-bold truncate max-w-[80px]">{creditor.display_name}</span>
-                    </Link>
+                    creditor.id === TREASURY_ID ? (
+                      <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                        <span className="text-base leading-none">🏛️</span>
+                        <span className="text-amber-200 font-bold">Казне</span>
+                      </span>
+                    ) : (
+                      <Link href={`/profile/${creditor.id}`} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gold/10 border border-gold/20">
+                        <CharacterIcon participant={creditor} size="xs" ringless />
+                        <span className="text-gold font-bold truncate max-w-[80px]">{creditor.display_name}</span>
+                      </Link>
+                    )
                   )}
                 </div>
                 <div className="flex items-center justify-between">
@@ -198,7 +237,7 @@ function CreateDebtForm({ onCreated }: { onCreated: () => void }) {
   const sb = getSupabase();
 
   const others = state.participants.filter(p =>
-    p.status !== 'gm' && p.id !== currentUser?.id
+    isPlayer(p) && p.id !== currentUser?.id
   );
   const canSubmit = currentUser && partnerId && amount > 0;
 

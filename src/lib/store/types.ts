@@ -1,6 +1,6 @@
 // Типы для Supabase-стора. Совпадают с колонками таблиц БД.
 
-export type ParticipantStatus = 'player' | 'pet' | 'master' | 'elite' | 'queen' | 'gm' | 'collector';
+export type ParticipantStatus = 'player' | 'pet' | 'master' | 'elite' | 'queen' | 'gm' | 'collector' | 'treasury';
 export type Role = 'guest' | 'player' | 'queen' | 'gm' | 'collector';
 
 export interface Participant {
@@ -99,7 +99,92 @@ export interface SuperGame {
   participant_ids: string[];
   starts_at?: string | null;
   spectator_bets_enabled: boolean;
+  entry_fee: number;
+  bank: number;
+  winner_id?: string | null;
+  state: MinorityState | NineBulletsState | Record<string, any>;
   created_at: string;
+}
+
+// ===== Правило меньшинства =====
+export interface MinorityRound {
+  number: number;
+  asked_id: string | null;
+  started_at: string;
+  duration_sec: number;
+  votes: Record<string, 'yes' | 'no'>;
+  status: 'open' | 'closed';
+}
+export interface MinorityHistoryEntry {
+  number: number;
+  asked_id: string | null;
+  votes: Record<string, 'yes' | 'no'>;
+  minority: 'yes' | 'no' | 'tie';
+  eliminated: string[];
+  penalties: Record<string, number>; // кто и сколько доп. внёс в банк за неучастие
+}
+export interface MinoritySpectatorBet {
+  id: string;
+  spectator_id: string;
+  on_id: string;
+  amount: number;
+  created_at: number;
+}
+export interface MinorityState {
+  alive_ids: string[];
+  fee_paid: Record<string, number>;
+  round: MinorityRound | null;
+  history: MinorityHistoryEntry[];
+  spectator_bets: MinoritySpectatorBet[];
+}
+
+// ===== Комната девяти патронов =====
+export type Bullet = 'red' | 'blue';
+export type Occupant = string | 'dummy' | null; // id игрока, 'dummy' (манекен), либо null до аукциона
+
+export interface NineBulletsBid {
+  seat: number;     // 1..9
+  amount: number;   // 0..100000
+}
+export interface NineBulletsShot {
+  seat: number;          // 1..9
+  bullet: Bullet;
+  target: Occupant;
+  delta_shooter: number;
+  delta_target: number;  // 0 если манекен (вместо манекена — Казна)
+  delta_treasury: number;
+}
+export interface NineBulletsRound {
+  n: number;                      // 1..3
+  loader_id: string;
+  shooter_id: string;
+  sitters_ids: string[];          // 5 игроков
+  chamber: Bullet[];              // 9 элементов, после зарядки. Скрывать в UI до фазы выстрелов.
+  start_pos: number;              // 0..8
+  bids: Record<string, NineBulletsBid>;
+  auction_status: 'pending' | 'open' | 'resolved';
+  seats: { idx: number; occupant: Occupant; bid?: number }[];  // 9 мест, idx=1..9
+  shooter_swap: { a: number; b: number; paid: boolean } | { skipped: true } | null;
+  shots: NineBulletsShot[];
+  shots_revealed: number;         // 0..9
+  hits_on_sitters: number;        // итог раунда
+  loader_payout: number;          // итог раунда (отриц = штраф)
+  status: 'role_selection' | 'loading' | 'seat_auction' | 'shooter_swap' | 'shooting' | 'round_result';
+}
+export interface NineBulletsState {
+  current_round: number;          // 1..3
+  rounds: NineBulletsRound[];     // длина = current_round (или 3 если игра finished)
+  status:
+    | 'scheduled'
+    | 'role_selection'
+    | 'loading'
+    | 'seat_auction'
+    | 'shooter_swap'
+    | 'shooting'
+    | 'round_result'
+    | 'finished';
+  // история ролей: чтобы не выбирать стрелка/заряжающего два раунда подряд
+  role_history: { round: number; loader_id: string; shooter_id: string; sitters_ids: string[] }[];
 }
 
 export interface AcademyEvent {
@@ -163,4 +248,96 @@ export interface RoomState {
   season: number;
   day: number;
   updated_at: string;
+}
+
+
+
+// =====================================================================
+// V2: Глобальные переводы йен и Большая игра «Карточный корабль»
+// =====================================================================
+
+export interface Transfer {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  amount: number;
+  comment: string;
+  related_game_id?: string | null;
+  created_at: string;
+}
+
+export type CardShipStatus =
+  | 'scheduled'
+  | 'collecting_stakes'
+  | 'active'
+  | 'finishing'
+  | 'finished'
+  | 'cancelled';
+
+export interface CardShipGame {
+  id: string;
+  super_game_id?: string | null;
+  status: CardShipStatus;
+  entry_fee: number;
+  bank: number;
+  participant_ids: string[];
+  winner_ids: string[];
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
+}
+
+export type CardType = 'rock' | 'scissors' | 'paper';
+export type CardShipPlayerStatus = 'active' | 'out_of_cards' | 'survived' | 'lost';
+
+export interface CardShipState {
+  id: string;
+  game_id: string;
+  player_id: string;
+  rocks: number;
+  scissors: number;
+  papers: number;
+  stars: number;
+  cards_played: number;
+  duels_count: number;
+  status: CardShipPlayerStatus;
+}
+
+export type CardShipDuelStatus =
+  | 'pending'
+  | 'accepted'
+  | 'revealed'
+  | 'declined'
+  | 'cancelled'
+  | 'expired';
+
+export interface CardShipDuel {
+  id: string;
+  game_id: string;
+  challenger_id: string;
+  opponent_id: string;
+  status: CardShipDuelStatus;
+  challenger_card?: CardType | null;
+  opponent_card?: CardType | null;
+  winner_id?: string | null;
+  accept_deadline?: string | null;
+  pick_deadline?: string | null;
+  created_at: string;
+  resolved_at?: string | null;
+}
+
+export type CardShipListingStatus = 'open' | 'sold' | 'cancelled';
+export type CardShipItemType = 'card' | 'star';
+
+export interface CardShipListing {
+  id: string;
+  game_id: string;
+  seller_id: string;
+  item_type: CardShipItemType;
+  card_type?: CardType | null;
+  price: number;
+  status: CardShipListingStatus;
+  buyer_id?: string | null;
+  created_at: string;
+  sold_at?: string | null;
 }
