@@ -266,14 +266,17 @@ function CurrentPlayerActions({
 }) {
   const skipUsed = j.skip_used_ids.includes(currentUserId);
   const hintUsed = (j.hint_uses?.[currentUserId] ?? 0) > 0;
+  const hintCard = j.hint_revealed_top?.[currentUserId] ?? null;
 
   if (j.mode === 'advanced') {
     return (
       <div className="space-y-2">
-        <button
-          className="btn-primary w-full text-sm"
-          onClick={() => doDraw(game, currentUserId)}
-        >🎴 Тянуть карту</button>
+        <DeckPicker
+          deck={j.deck}
+          onPick={(idx) => doDraw(game, currentUserId, idx)}
+          hintIndex={hintUsed ? 0 : null}
+          hintCard={hintCard}
+        />
         <div className="grid grid-cols-3 gap-2">
           <button
             className="btn-secondary text-[10px]"
@@ -302,6 +305,50 @@ function CurrentPlayerActions({
       className="btn-primary w-full text-sm"
       onClick={() => doDraw(game, currentUserId)}
     >🎴 Тянуть карту</button>
+  );
+}
+
+function DeckPicker({
+  deck, onPick, hintIndex, hintCard,
+}: {
+  deck: JokerDrawCard[];
+  onPick: (idx: number) => void;
+  hintIndex: number | null;       // если != null — у этой позиции подсказка
+  hintCard: JokerDrawCard | null;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] uppercase tracking-widest text-gold/80 text-center">Выберите карту</div>
+      <div className="grid grid-cols-6 gap-1.5">
+        {deck.map((_, idx) => {
+          const showHint = hintIndex === idx && hintCard !== null;
+          return (
+            <button
+              key={idx}
+              onClick={() => onPick(idx)}
+              className={cn(
+                'aspect-[2/3] rounded-md border flex flex-col items-center justify-center',
+                'bg-gradient-to-br from-card/80 to-card/40 border-white/10',
+                'active:scale-95 transition-transform',
+                showHint && (hintCard === 'joker' ? 'border-red-400/70 bg-red-500/10' : 'border-emerald-400/70 bg-emerald-500/10'),
+              )}
+            >
+              <div className="text-[10px] text-muted-foreground">#{idx + 1}</div>
+              <div className="text-base">
+                {showHint
+                  ? (hintCard === 'joker' ? '🃏' : '🂠')
+                  : '🂠'}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {hintIndex !== null && hintCard && (
+        <div className="text-[10px] text-amber-300 text-center">
+          Подсказка: верхняя карта (#1) — {hintCard === 'joker' ? '🃏 ДЖОКЕР, не тяните её!' : '🂠 безопасная'}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -454,7 +501,7 @@ async function cancelGame(game: SuperGame, players: Participant[]) {
   await pushEvent('Достать Джокера · отменена', undefined, link);
 }
 
-async function doDraw(game: SuperGame, playerId: string) {
+async function doDraw(game: SuperGame, playerId: string, pickIndex?: number) {
   const sb = getSupabase();
   if (!sb) return;
   const cur = await readState(game.id);
@@ -464,9 +511,18 @@ async function doDraw(game: SuperGame, playerId: string) {
   const expected = cur.turn_order[cur.current_idx];
   if (expected !== playerId) return;
 
-  const before = cur.deck.length;
   const beforeChance = jokerChance(cur.deck);
-  const { card, rest } = drawFromDeck(cur.deck);
+  // Выбираем карту по индексу (advanced) или верхнюю (quick/long)
+  let card: JokerDrawCard;
+  let rest: JokerDrawCard[];
+  if (typeof pickIndex === 'number' && pickIndex >= 0 && pickIndex < cur.deck.length) {
+    card = cur.deck[pickIndex];
+    rest = cur.deck.filter((_, i) => i !== pickIndex);
+  } else {
+    const drawn = drawFromDeck(cur.deck);
+    card = drawn.card;
+    rest = drawn.rest;
+  }
   const eliminated = new Set(cur.eliminated_ids);
   let newEliminated = [...cur.eliminated_ids];
   let didEliminate = false;

@@ -943,8 +943,15 @@ function AdminPanel({
   const adminSkipSwap = async () => {
     if (!sb || !round) return;
     const newRounds = [...nb.rounds];
-    newRounds[nb.current_round - 1] = { ...round, shooter_swap: { skipped: true } as any };
-    await sb.from('super_games').update({ state: { ...nb, rounds: newRounds } }).eq('id', game.id);
+    newRounds[nb.current_round - 1] = {
+      ...round,
+      shooter_swap: { skipped: true } as any,
+      status: 'shooting',
+    };
+    // Сразу переводим всю игру в фазу стрельбы — у админа в одну кнопку
+    await sb.from('super_games').update({
+      state: { ...nb, status: 'shooting', rounds: newRounds },
+    }).eq('id', game.id);
   };
 
   // ---- перейти к стрельбе ----
@@ -983,6 +990,31 @@ function AdminPanel({
         await transferBetweenPlayers(round.shooter_id, target, 100000,
           `Боевой по сидящему · Раунд ${round.n}`, linkRef);
       }
+      // Уведомления стрелку и сидящему
+      await sb.from('notifications').insert([
+        {
+          id: 'n-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+          recipient_id: target,
+          type: 'nine_bullets_shot',
+          title: bullet === 'blue' ? '🔵 Холостой!' : '🔴 Боевой!',
+          body: bullet === 'blue'
+            ? `Место ${seatIdx} · вы заплатили ¥100 000 стрелку (холостой)`
+            : `Место ${seatIdx} · вы получили ¥100 000 от стрелка (боевой)`,
+          link_url: linkRef,
+          is_read: false,
+        },
+        {
+          id: 'n-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+          recipient_id: round.shooter_id,
+          type: 'nine_bullets_shot',
+          title: bullet === 'blue' ? '🔵 Стрелок: холостой' : '🔴 Стрелок: боевой',
+          body: bullet === 'blue'
+            ? `Место ${seatIdx} · вы получили ¥100 000`
+            : `Место ${seatIdx} · вы заплатили ¥100 000`,
+          link_url: linkRef,
+          is_read: false,
+        },
+      ]);
     } else if (target === 'dummy') {
       // С Казной
       if (bullet === 'red') {
@@ -994,6 +1026,18 @@ function AdminPanel({
         await chargeToTreasury(round.shooter_id, 25000,
           `Холостой по манекену · Раунд ${round.n}`, linkRef);
       }
+      // Уведомление стрелку
+      await sb.from('notifications').insert({
+        id: 'n-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+        recipient_id: round.shooter_id,
+        type: 'nine_bullets_shot',
+        title: bullet === 'red' ? '🔴 Стрелок · по манекену' : '🔵 Стрелок · по манекену',
+        body: bullet === 'red'
+          ? `Место ${seatIdx} · +¥50 000 от Казны`
+          : `Место ${seatIdx} · −¥25 000 в Казну`,
+        link_url: linkRef,
+        is_read: false,
+      });
     }
 
     const newShot: NineBulletsShot = {
@@ -1134,19 +1178,35 @@ function AdminPanel({
       )}
 
       {nb.status === 'shooter_swap' && round && (
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={adminSkipSwap} className="btn-secondary text-xs">
-            ⏭ Пропустить за стрелка
-          </button>
-          <button onClick={toShooting} disabled={!round.shooter_swap} className="btn-primary text-xs">
-            🎯 К стрельбе →
-          </button>
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={adminSkipSwap} className="btn-secondary text-xs">
+              ⏭ Пропустить за стрелка
+            </button>
+            <button onClick={toShooting} disabled={!round.shooter_swap} className="btn-primary text-xs">
+              🎯 К стрельбе →
+            </button>
+          </div>
+          {/* Fallback на случай зависания фазы — админ всегда может вручную раскрыть выстрел */}
+          {round.shooter_swap && round.shots_revealed < 9 && (
+            <button onClick={revealNextShot} disabled={busy} className="btn-success w-full text-xs">
+              🔫 Принудительно раскрыть выстрел {round.shots_revealed + 1}/9
+            </button>
+          )}
         </div>
       )}
 
       {nb.status === 'shooting' && round && (
         <button onClick={revealNextShot} disabled={busy || round.shots_revealed >= 9} className="btn-primary w-full">
           {round.shots_revealed >= 9 ? 'Все 9 выстрелов сделаны' : `🔫 Раскрыть выстрел ${round.shots_revealed + 1}/9`}
+        </button>
+      )}
+
+      {/* Дополнительная страховка: на любой фазе если swap решён и выстрелов меньше 9 — даём кнопку */}
+      {round && nb.status !== 'shooting' && nb.status !== 'shooter_swap' && nb.status !== 'round_result'
+        && nb.status !== 'finished' && round.shooter_swap && round.shots_revealed < 9 && (
+        <button onClick={revealNextShot} disabled={busy} className="btn-success w-full text-xs mt-1">
+          🔫 Раскрыть выстрел {round.shots_revealed + 1}/9 (резерв)
         </button>
       )}
 

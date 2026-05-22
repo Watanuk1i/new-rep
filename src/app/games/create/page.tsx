@@ -69,6 +69,21 @@ function Inner() {
         body: `${currentUser.display_name} вызвал вас в ${gl.label} · ${stakeAmount.toLocaleString('ru-RU')} ейнов`,
         link_url: '/games',
       });
+      // Дополнительно — всем игрокам кроме создателя и приглашённого, что игра стартовала
+      const others = state.participants.filter(p =>
+        isPlayer(p) && p.is_active && p.id !== currentUser.id && p.id !== opp,
+      );
+      if (others.length > 0) {
+        await sb.from('notifications').insert(others.map(t => ({
+          id: uid('n'),
+          recipient_id: t.id,
+          type: 'challenge_started',
+          title: `Быстрая игра: ${gl.label}`,
+          body: `${currentUser.display_name} вызвал ${target?.display_name ?? 'игрока'} · ${stakeAmount.toLocaleString('ru-RU')} ¥`,
+          link_url: '/games',
+          is_read: false,
+        })));
+      }
     } else {
       // Открытый вызов — уведомление всем игрокам кроме создателя
       const targets = state.participants.filter(p =>
@@ -86,6 +101,17 @@ function Inner() {
         })));
       }
     }
+    // Событие в общую ленту тоже
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'mini_game_start',
+      title: `Быстрая игра: ${gl.label}`,
+      body: opp
+        ? `${currentUser.display_name} вызвал ${state.participants.find(p => p.id === opp)?.display_name ?? 'игрока'} · ${stakeAmount.toLocaleString('ru-RU')} ¥`
+        : `${currentUser.display_name} бросил открытый вызов · ${stakeAmount.toLocaleString('ru-RU')} ¥`,
+      link_url: '/games',
+      is_for_gm_only: false,
+    });
     setBusy(false);
     router.push('/games');
   };

@@ -60,7 +60,7 @@ async function pushEvent(title: string, body: string | undefined, link: string) 
 // ===========================================================================
 
 export function JunkoInfluencePanel({ game }: { game: SuperGame }) {
-  const { state, role } = useStore();
+  const { state, role, currentUser } = useStore();
   const isAdmin = role === 'gm' || role === 'queen';
   const sub = getSub(game);
   const nb = (game.state ?? {}) as any;
@@ -71,6 +71,10 @@ export function JunkoInfluencePanel({ game }: { game: SuperGame }) {
     state.participants.find(p => p.id === JUNKO_ID) ??
     state.participants.find(p =>
       p.display_name?.toLowerCase().includes('джунко') || p.display_name?.toLowerCase().includes('junko'));
+
+  // Сама Джунко (если залогинена) тоже может управлять своей панелью
+  const isJunkoUser = !!currentUser && junkoParticipant?.id === currentUser.id;
+  const canActAsJunko = isAdmin || isJunkoUser;
 
   const inAuction = round?.status === 'seat_auction' || round?.auction_status === 'open';
   const inSwap = round?.status === 'shooter_swap';
@@ -112,8 +116,13 @@ export function JunkoInfluencePanel({ game }: { game: SuperGame }) {
         </div>
       </div>
 
-      {isAdmin && (
+      {canActAsJunko && (
         <div className="space-y-2">
+          {isJunkoUser && !isAdmin && (
+            <div className="text-[10px] text-fuchsia-300/80 italic">
+              Вы — Джунко. Можно использовать свои возможности, даже если не в составе игры.
+            </div>
+          )}
           {inAuction && !provUsedInThisRound && (
             <ProvocationButton game={game} round={round} junkoId={junkoParticipant?.id ?? null} />
           )}
