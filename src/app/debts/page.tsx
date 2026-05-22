@@ -53,16 +53,14 @@ export default function DebtsPage() {
 
   const confirmDebt = async (d: Debt) => {
     if (!sb) return;
-    // Перевод средств: кредитор → должнику (или наоборот по флагу initiator)
     const debtor = state.participants.find(p => p.id === d.debtor_id);
     const creditor = state.participants.find(p => p.id === d.creditor_id);
     if (!debtor || !creditor) return;
-    // Должник получает деньги, кредитор — теряет
-    await sb.from('participants').update({ balance: debtor.balance + d.amount }).eq('id', debtor.id);
-    await sb.from('participants').update({ balance: Math.max(0, creditor.balance - d.amount) }).eq('id', creditor.id);
+    // RPC apply_transfer: атомарно списывает с кредитора и зачисляет должнику, пишет history.
+    const tx = await applyTransfer(creditor.id, debtor.id, d.amount,
+      `Долг: ${d.description || 'без описания'}`, '/debts');
+    if (!tx.ok) { alert(tx.error || 'Не удалось зачислить долг'); return; }
     await sb.from('debts').update({ status: 'active' }).eq('id', d.id);
-    await addHistory(debtor.id, 'debt_received', `Получил долг от ${creditor.display_name}`, d.amount, '/debts');
-    await addHistory(creditor.id, 'debt_given', `Дал в долг ${debtor.display_name}`, -d.amount, '/debts');
     await notify(d.initiator === 'debtor' ? d.debtor_id : d.creditor_id, {
       type: 'debt_request',
       title: 'Долг подтверждён',
@@ -88,12 +86,11 @@ export default function DebtsPage() {
     const debtor = state.participants.find(p => p.id === d.debtor_id);
     const creditor = state.participants.find(p => p.id === d.creditor_id);
     if (!debtor || !creditor) return;
-    // Перевод через RPC: если у должника не хватит — допишет долг (чего, по сути, не должно быть).
-    const tx = await applyTransfer(debtor.id, creditor.id, d.amount, `Возврат долга: ${d.description || 'Долг'}`, '/debts');
+    // RPC сам пишет history; если у должника не хватит — допишет авто-долг.
+    const tx = await applyTransfer(debtor.id, creditor.id, d.amount,
+      `Возврат долга: ${d.description || 'Долг'}`, '/debts');
     if (!tx.ok) { alert(tx.error || 'Ошибка'); return; }
     await sb.from('debts').update({ status: 'closed' }).eq('id', d.id);
-    await addHistory(debtor.id, 'debt_paid', `Вернул долг ${creditor.display_name}`, -d.amount, '/debts');
-    await addHistory(creditor.id, 'debt_recovered', `Получил возврат от ${debtor.display_name}`, d.amount, '/debts');
   };
 
   return (
@@ -242,7 +239,7 @@ function CreateDebtForm({ onCreated }: { onCreated: () => void }) {
   const [partnerId, setPartnerId] = useState('');
   const [amount, setAmount] = useState(10_000);
   const [description, setDescription] = useState('');
-  const [day, setDay] = useState(2);
+  const [day, setDay] = useState(() => (state.room?.day ?? 1) + 2);
   const [direction, setDirection] = useState<'borrow' | 'lend'>('borrow');
   const [busy, setBusy] = useState(false);
   const sb = getSupabase();

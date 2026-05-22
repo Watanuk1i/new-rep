@@ -121,11 +121,11 @@ export default function LoansPage() {
 // =============================================================================
 
 function RequestForm() {
-  const { currentUser } = useStore();
+  const { state, currentUser } = useStore();
   const sb = getSupabase();
   const [amount, setAmount] = useState(200_000);
   const [reason, setReason] = useState('');
-  const [dueDay, setDueDay] = useState(3);
+  const [dueDay, setDueDay] = useState(() => (state.room?.day ?? 1) + 3);
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   if (!currentUser) return null;
@@ -213,12 +213,12 @@ function MyRequests({ requests }: { requests: LoanRequest[] }) {
     if (!sb || !currentUser) return;
     if (r.status !== 'counter_offer') return;
     if (!confirm('Принять условия Кируми и получить деньги?')) return;
-    // Перевод: Кируми → заёмщик; создаётся официальный долг
+    // Деньги выдаются из Казны (Фонд Тогами); Кируми — официальный кредитор как роль.
     const principal = r.proposed_amount ?? r.requested_amount;
     const rate = r.proposed_interest_rate ?? LOAN_NORMAL_RATE;
     const dueDay = r.proposed_due_day ?? r.requested_due_day ?? 3;
     const link = '/loans';
-    const tx = await applyTransfer(KIRUMI_ID, currentUser.id, principal,
+    const tx = await applyTransfer(TREASURY_ID, currentUser.id, principal,
       `Кредит Кируми: ${r.reason ?? '—'}`, link);
     if (!tx.ok) { alert(tx.error || 'Ошибка'); return; }
     const debtId = uid('d');
@@ -226,7 +226,8 @@ function MyRequests({ requests }: { requests: LoanRequest[] }) {
     await sb.from('debts').insert({
       id: debtId,
       debtor_id: currentUser.id,
-      creditor_id: KIRUMI_ID,
+      // Кредитор формально — Казна (туда возвращается долг), Кируми отмечена через description.
+      creditor_id: TREASURY_ID,
       amount: owe,
       principal_amount: principal,
       interest_rate: rate,
@@ -440,7 +441,10 @@ function RequestCard({
 
 function KirumiLoans() {
   const { state } = useStore();
-  const debts = state.debts.filter(d => d.creditor_id === KIRUMI_ID);
+  // Кредиты Кируми = долги с source 'kirumi_loan' (или с creditor_id KIRUMI_ID для старых записей).
+  const debts = state.debts.filter(d =>
+    d.source === 'kirumi_loan' || d.creditor_id === KIRUMI_ID
+  );
   if (debts.length === 0) {
     return <div className="glass p-6 text-center text-sm text-muted-foreground">Кируми пока никому не выдала.</div>;
   }
