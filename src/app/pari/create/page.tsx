@@ -19,7 +19,11 @@ export default function CreatePariPage() {
   const [commission, setCommission] = useState(5);
   const [anonymous, setAnonymous] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [activeGroup, setActiveGroup] = useState<string>(() =>
+    Array.from(new Set(PARI_TEMPLATES.map(t => t.group)))[0] ?? '');
   const sb = getSupabase();
+
+  const groups = Array.from(new Set(PARI_TEMPLATES.map(t => t.group)));
 
   const canSubmit = title.trim() && (kind === 'yesno' || options.filter(o => o.trim()).length >= 2);
 
@@ -75,43 +79,62 @@ export default function CreatePariPage() {
 
   return (
     <div className="px-3 sm:px-4 py-4 max-w-md mx-auto space-y-4 animate-fade-in">
-      {/* Шаблоны пари по большим играм */}
-      <details className="glass p-4">
+      {/* Шаблоны пари по большим играм — компактный слайдер с табами */}
+      <details className="glass p-3">
         <summary className="cursor-pointer text-sm font-bold flex items-center justify-between">
-          <span>📋 Готовые шаблоны (по Большим играм)</span>
+          <span>📋 Готовые шаблоны</span>
           <span className="text-[10px] text-gold/80">{PARI_TEMPLATES.length} шт</span>
         </summary>
-        <div className="mt-3 space-y-2 max-h-72 overflow-y-auto">
-          {Array.from(new Set(PARI_TEMPLATES.map(t => t.group))).map(group => (
-            <div key={group}>
-              <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-1">{group}</div>
-              <div className="space-y-1">
-                {PARI_TEMPLATES.filter(t => t.group === group).map((t, i) => (
-                  <button
-                    key={`${group}-${i}`}
-                    onClick={() => {
-                      setTitle(t.title);
-                      setKind(t.kind);
-                      if (t.kind === 'custom') {
-                        if (t.options === 'players') {
-                          setOptions(state.participants
-                            .filter(p => isPlayer(p) && p.is_active)
-                            .map(p => p.display_name));
-                        } else if (Array.isArray(t.options)) {
-                          setOptions(t.options);
-                        }
-                      } else {
-                        setOptions(['', '']);
-                      }
-                    }}
-                    className="text-left w-full px-2 py-1.5 rounded-lg bg-card/40 border border-white/8 active:bg-white/5 text-xs"
-                  >
-                    {t.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="mt-3 space-y-2">
+          {/* Горизонтальный таб-слайдер по играм */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scroll-x">
+            {groups.map(g => (
+              <button
+                key={g}
+                onClick={() => setActiveGroup(g)}
+                className={cn(
+                  'shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] border whitespace-nowrap',
+                  activeGroup === g
+                    ? 'bg-gold/15 border-gold/50 text-gold'
+                    : 'bg-card/40 border-white/8 text-muted-foreground active:bg-white/5'
+                )}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+          {/* Список шаблонов выбранной игры */}
+          <div className="space-y-1 max-h-60 overflow-y-auto">
+            {PARI_TEMPLATES.filter(t => t.group === activeGroup).map((t, i) => (
+              <button
+                key={`${activeGroup}-${i}`}
+                onClick={() => {
+                  setTitle(t.title);
+                  setKind(t.kind);
+                  if (t.kind === 'custom') {
+                    if (t.options === 'players') {
+                      setOptions(state.participants
+                        .filter(p => isPlayer(p) && p.is_active)
+                        .map(p => p.display_name));
+                    } else if (Array.isArray(t.options)) {
+                      setOptions(t.options);
+                    }
+                  } else {
+                    setOptions(['', '']);
+                  }
+                }}
+                className="text-left w-full px-2.5 py-2 rounded-lg bg-card/40 border border-white/8 active:bg-white/5 text-xs flex items-center gap-2"
+              >
+                <span className="text-[10px] text-gold/70 shrink-0">
+                  {t.kind === 'yesno' ? 'Да/Нет' : 'Выбор'}
+                </span>
+                <span className="flex-1">{t.title}</span>
+              </button>
+            ))}
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Кликните по шаблону — он подставится в форму ниже. Имя автора и дату закрытия можно изменить.
+          </div>
         </div>
       </details>
 
