@@ -741,6 +741,8 @@ function TreasuryTab() {
       </div>
 
       <ResetEconomySection />
+
+      <FullResetSection />
     </div>
   );
 }
@@ -858,6 +860,151 @@ function ResetEconomySection() {
         className="btn-danger w-full text-xs"
       >
         {busy ? 'Сброс...' : '🛑 Сбросить выбранное'}
+      </button>
+    </div>
+  );
+}
+
+function FullResetSection() {
+  const sb = getSupabase();
+  const [busy, setBusy] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+
+  const run = async () => {
+    if (!sb) return;
+    if (confirmText !== 'СБРОС') {
+      alert('Чтобы подтвердить полный сброс, введите слово СБРОС в поле выше.');
+      return;
+    }
+    if (!confirm('ПОЛНЫЙ сброс БД до дефолтных значений: учётки разблокируются, имена персонажей вернутся к каноничным, балансы — стартовые, ВСЕ игры/долги/пари/история будут удалены. Это нельзя отменить. Продолжить?')) return;
+    setBusy(true);
+    try {
+      // 1) Удаляем все динамические данные.
+      await sb.from('card_ship_listings').delete().neq('id', '');
+      await sb.from('card_ship_duels').delete().neq('id', '');
+      await sb.from('card_ship_states').delete().neq('id', '');
+      await sb.from('card_ship_games').delete().neq('id', '');
+      await sb.from('transfers').delete().neq('id', '');
+      await sb.from('history').delete().neq('id', '');
+      await sb.from('events').delete().neq('id', '');
+      await sb.from('notifications').delete().neq('id', '');
+      await sb.from('rumors').delete().neq('id', '');
+      await sb.from('super_games').delete().neq('id', '');
+      await sb.from('pari').delete().neq('id', '');
+      await sb.from('debts').delete().neq('id', '');
+      await sb.from('challenges').delete().neq('id', '');
+
+      // 2) Возвращаем участников к каноничным дефолтам.
+      const seed: Array<[string, string, string, number, number, boolean]> = [
+        // id, display_name, status, balance, reputation, is_active
+        ['p-gm',         'Монокума',           'gm',       999_999_999, 100, true],
+        ['p-treasury',   'Казна студсовета',   'treasury', 15_000_000,  0,   true],
+        ['p-queen',      'Селестия Люденберг', 'queen',    5_000_000,   50,  true],
+        ['p-1',          'Макото Наэги',       'player',   1_000_000,   60,  false],
+        ['p-2',          'Кёко Киригири',      'player',   1_500_000,   70,  false],
+        ['p-3',          'Бьякуя Тогами',      'player',   2_000_000,   80,  false],
+        ['p-4',          'Токо Фукава',        'player',   800_000,     40,  false],
+        ['p-5',          'Аой Асахина',        'player',   900_000,     65,  false],
+        ['p-6',          'Ясухиро Хагакуре',   'player',   600_000,     35,  false],
+        ['p-7',          'Сакура Огами',       'player',   1_200_000,   75,  false],
+        ['p-8',          'Леон Кувата',        'player',   1_000_000,   45,  true],
+        ['p-9',          'Саяка Майзоно',      'player',   1_100_000,   70,  false],
+        ['p-10',         'Чихиро Фуджисаки',   'player',   850_000,     60,  false],
+        ['p-11',         'Мондо Овада',        'elite',    3_000_000,   30,  true],
+        ['p-12',         'Киётака Ишимару',    'player',   1_050_000,   65,  false],
+        ['p-13',         'Хифуми Ямада',       'player',   500_000,     30,  false],
+        ['p-14',         'Джунко Эношима',     'elite',    3_000_000,   30,  true],
+        ['p-15',         'Кируми Тоджо',       'elite',    3_000_000,   30,  true],
+        ['p-kokichi',    'Кокичи Ома',         'player',   1_200_000,   0,   true],
+        ['p-nagito',     'Нагито Комаэда',     'player',   1_000_000,   0,   true],
+        ['p-mikan',      'Микан Цумики',       'player',   800_000,     0,   true],
+        ['p-peko',       'Пеко Пекояма',       'player',   1_000_000,   0,   true],
+        ['p-komaru',     'Комару Наэги',       'player',   1_000_000,   0,   true],
+        ['p-shuichi',    'Шуичи Сайхара',      'player',   1_000_000,   0,   true],
+        ['p-incog-1',    'Инкогнито',          'player',   1_000_000,   0,   true],
+        ['p-incog-2',    'Инкогнито',          'player',   1_000_000,   0,   true],
+        ['p-incog-3',    'Инкогнито',          'player',   1_000_000,   0,   true],
+        ['p-togami-fund','Фонд Тогами',        'collector',8_000_000,   0,   false],
+        ['p-kirumi-fund','Кредитный резерв Кируми','collector',8_000_000,0,  true],
+      ];
+
+      for (const [id, name, status, balance, reputation, is_active] of seed) {
+        // Если такого id нет — создаём; есть — обновляем.
+        const { data: exists } = await sb.from('participants').select('id').eq('id', id).maybeSingle();
+        if (exists) {
+          // Спецлогины p-gm / p-queen имеют системные пароли — их нужно сохранить.
+          const updatePayload: any = {
+            display_name: name,
+            status,
+            balance,
+            reputation,
+            wins: 0,
+            losses: 0,
+            pet_owner_id: null,
+            is_active,
+          };
+          if (id === 'p-gm') updatePayload.password = 'host_academy_2026';
+          else if (id === 'p-queen') updatePayload.password = 'queen_celestia_2026';
+          else {
+            // Все остальные → пароль null, регистрация снимается, чтобы можно было
+            // зарегистрироваться заново с новым логином.
+            updatePayload.password = null;
+            updatePayload.is_registered = false;
+          }
+          await sb.from('participants').update(updatePayload).eq('id', id);
+        } else {
+          await sb.from('participants').insert({
+            id, display_name: name, status, balance, reputation,
+            wins: 0, losses: 0, is_active,
+            is_registered: id === 'p-gm' || id === 'p-queen',
+            password: id === 'p-gm' ? 'host_academy_2026' : id === 'p-queen' ? 'queen_celestia_2026' : null,
+          });
+        }
+      }
+
+      // Записываем большое событие
+      await sb.from('events').insert({
+        id: 'ev-fullreset-' + Date.now(),
+        type: 'gm_alert',
+        title: 'Ведущий выполнил полный сброс БД до дефолта',
+        body: 'Балансы, имена и регистрации возвращены к стартовым. История очищена.',
+        is_for_gm_only: false,
+      });
+
+      alert('Полный сброс выполнен. Все игроки могут регистрироваться заново.');
+      setConfirmText('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="glass-strong p-4 border border-red-500/60 bg-red-500/10 space-y-2">
+      <div className="text-[10px] uppercase tracking-widest text-red-300">☠ Полный сброс БД</div>
+      <p className="text-[11px] text-muted-foreground">
+        Сбрасывает БД до состояния как после первой установки:
+        — имена персонажей возвращаются к каноничным (Макото, Кёко, Бьякуя…);
+        — все логины/пароли игроков обнуляются (можно регистрироваться заново);
+        — балансы и репутация → стартовые;
+        — все игры, долги, пари, переводы, история, события — удалены;
+        — учётки <b>host</b> / <b>queen</b> сохраняются с системными паролями.
+      </p>
+      <p className="text-[11px] text-red-300">
+        Введите слово <b>СБРОС</b> заглавными буквами, чтобы подтвердить:
+      </p>
+      <input
+        type="text"
+        value={confirmText}
+        onChange={e => setConfirmText(e.target.value)}
+        placeholder="СБРОС"
+        className="input-field font-mono text-sm"
+      />
+      <button
+        onClick={run}
+        disabled={busy || confirmText !== 'СБРОС'}
+        className="btn-danger w-full text-xs"
+      >
+        {busy ? 'Полный сброс...' : '☠ Полный сброс БД до дефолта'}
       </button>
     </div>
   );
