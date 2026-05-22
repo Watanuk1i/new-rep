@@ -524,6 +524,8 @@ function SuperGamesAdmin() {
 
   return (
     <div className="space-y-3">
+      <CardShipCreator />
+
       <button onClick={() => setCreating(!creating)} className="btn-primary w-full">
         {creating ? '✕ Отмена' : '+ Создать Супер игру'}
       </button>
@@ -1004,6 +1006,203 @@ function AccountsTab() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+
+// =====================================================================
+// КАРТОЧНЫЙ КОРАБЛЬ — создание Большой игры
+// =====================================================================
+// Создаёт связку: super_games (для отображения в списке) + card_ship_games
+// (с собственным состоянием — карты/звёзды/банк/дуэли/рынок).
+// Игроки выбираются вручную или скопом (все активные кроме Селестии).
+// Для запуска (списания ¥100k и раздачи карт) используется кнопка
+// «Запустить игру» уже на странице самой игры.
+
+const DEFAULT_ENTRY_FEE = 100_000;
+
+function CardShipCreator() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [open, setOpen] = useState(false);
+  const [entryFee, setEntryFee] = useState(DEFAULT_ENTRY_FEE);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Селестия (queen) НЕ участвует — она ведущая/наблюдатель.
+  const eligible = state.participants.filter(p =>
+    p.status !== 'gm' && p.status !== 'queen' && p.is_active,
+  );
+
+  const togglePart = (pid: string) => {
+    const next = new Set(selected);
+    if (next.has(pid)) next.delete(pid); else next.add(pid);
+    setSelected(next);
+  };
+
+  const selectAll = () => setSelected(new Set(eligible.map(p => p.id)));
+  const clearAll = () => setSelected(new Set());
+
+  const create = async () => {
+    setError(null);
+    const ids = Array.from(selected);
+    if (ids.length < 2) {
+      setError('Нужно минимум 2 игрока (рекомендуется 8–14).');
+      return;
+    }
+    if (entryFee <= 0) {
+      setError('Входная ставка должна быть больше 0.');
+      return;
+    }
+    if (!sb) return;
+    setBusy(true);
+
+    const sgId = uid('sg');
+    const csId = uid('cs');
+
+    // 1) super_games — чтобы корабль появился в общем списке Больших игр
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: 'Карточный корабль',
+      type: 'card_ship',
+      description: 'Камень — Ножницы — Бумага. Сделки, дуэли и блеф.',
+      rules: 'Каждый игрок начинает с 9 карт (3 Камня + 3 Ножниц + 3 Бумаги) и 3 звёзд.\n' +
+        'Цель: к концу игры остаться с 0 карт и не менее 3 звёзд.\n' +
+        'Дуэли: тайный выбор → раскрытие. Победителю +1 звезда от проигравшего.\n' +
+        'Рынок: можно продавать и покупать карты и звёзды за ейны.\n' +
+        'В конце выжившие делят банк поровну.',
+      stakes: `Входная ставка: ¥${entryFee.toLocaleString('ru-RU')} с каждого игрока в банк`,
+      status: 'scheduled',
+      participant_ids: ids,
+      spectator_bets_enabled: false,
+    });
+
+    // 2) card_ship_games — собственное состояние игры
+    await sb.from('card_ship_games').insert({
+      id: csId,
+      super_game_id: sgId,
+      status: 'collecting_stakes',
+      entry_fee: entryFee,
+      bank: 0,
+      participant_ids: ids,
+      winner_ids: [],
+    });
+
+    // 3) Уведомление приглашённым
+    await sb.from('notifications').insert(ids.map(pid => ({
+      id: uid('n'),
+      recipient_id: pid,
+      type: 'big_game_invite',
+      title: 'Карточный корабль',
+      body: `Вас пригласили. Входная ставка: ¥${entryFee.toLocaleString('ru-RU')}`,
+      link_url: `/super-games/${sgId}`,
+      is_read: false,
+    })));
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'big_game_start',
+      title: 'Карточный корабль — собирается',
+      body: `Игроков: ${ids.length}. Банк сформируется при запуске.`,
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+    setOpen(false);
+    setSelected(new Set());
+    setEntryFee(DEFAULT_ENTRY_FEE);
+  };
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">🎴</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Большая игра</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            Карточный корабль
+          </div>
+        </div>
+      </div>
+
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="btn-primary w-full">
+          + Создать Карточный корабль
+        </button>
+      ) : (
+        <div className="space-y-3 animate-slide-down">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
+              Входная ставка (ейн)
+            </label>
+            <input
+              type="number"
+              value={entryFee}
+              onChange={e => setEntryFee(Math.max(0, Number(e.target.value)))}
+              className="input-field font-mono"
+              min={1}
+            />
+            <div className="grid grid-cols-4 gap-1.5 mt-2">
+              {[50_000, 100_000, 200_000, 500_000].map(v => (
+                <button key={v} onClick={() => setEntryFee(v)}
+                  className={cn('px-2 py-2 text-[11px] rounded-lg border font-mono active:scale-95',
+                    entryFee === v ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/60 border-white/8')}>
+                  {v >= 1e6 ? `${v / 1e6}M` : `${v / 1000}K`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-gold">
+                Игроки ({selected.size})
+              </label>
+              <div className="flex gap-2">
+                <button onClick={selectAll} className="text-[10px] text-gold underline">все</button>
+                <button onClick={clearAll} className="text-[10px] text-muted underline">сбросить</button>
+              </div>
+            </div>
+            <div className="text-[10px] text-muted mb-2">
+              Селестия не участвует — она наблюдатель.
+            </div>
+            <div className="max-h-56 overflow-y-auto space-y-1 glass p-2">
+              {eligible.map(p => (
+                <label key={p.id} className="flex items-center gap-2 p-1.5 rounded-lg cursor-pointer active:bg-white/5">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(p.id)}
+                    onChange={() => togglePart(p.id)}
+                    className="w-4 h-4 accent-gold"
+                  />
+                  <CharacterIcon participant={p} size="xs" ringless />
+                  <span className="text-sm flex-1">{p.display_name}</span>
+                  <Yen amount={p.balance} className="text-[10px] text-muted-foreground" iconClass="w-3 h-3" />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-[10px] text-muted leading-relaxed bg-white/5 rounded-lg px-3 py-2 border border-white/5">
+            После создания игра будет в статусе «сбор ставок». Запустить и списать
+            ¥{entryFee.toLocaleString('ru-RU')} с каждого можно будет на странице игры.
+          </div>
+
+          {error && (
+            <div className="glass crimson-border p-2 text-xs text-red-300 text-center">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setOpen(false)} className="btn-secondary">Отмена</button>
+            <button onClick={create} disabled={busy} className={cn('btn-primary', busy && 'opacity-50')}>
+              {busy ? '...' : '🎴 Создать'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

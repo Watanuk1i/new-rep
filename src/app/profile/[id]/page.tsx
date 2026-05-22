@@ -1,16 +1,19 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/StoreProvider';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen } from '@/components/ui/Yen';
+import { TransferModal } from '@/components/economy/TransferModal';
 import { cn, getStatusLabel, getStatusColor } from '@/lib/utils';
 
 export default function ProfilePage() {
   const params = useParams();
   const id = params.id as string;
   const { state, currentUser } = useStore();
+  const [transferOpen, setTransferOpen] = useState(false);
   const p = state.participants.find(x => x.id === id);
 
   if (!p) {
@@ -96,12 +99,21 @@ export default function ProfilePage() {
 
       {/* Actions */}
       {currentUser && currentUser.id !== p.id && currentUser.status !== 'gm' && (
-        <div className="grid grid-cols-2 gap-2">
-          <Link href={`/games/create?opponent=${p.id}`} className="btn-primary text-xs">🎲 Вызвать</Link>
-          <Link href={`/pari/create?about=${p.id}`} className="btn-outline text-xs">💰 Создать пари</Link>
-          <Link href={`/debts?with=${p.id}`} className="btn-secondary text-xs">📜 Долг</Link>
-          <Link href={`/profile/${p.id}/history`} className="btn-secondary text-xs">📜 История</Link>
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <Link href={`/games/create?opponent=${p.id}`} className="btn-primary text-xs">🎲 Вызвать</Link>
+            <Link href={`/pari/create?about=${p.id}`} className="btn-outline text-xs">💰 Создать пари</Link>
+            <Link href={`/debts?with=${p.id}`} className="btn-secondary text-xs">📜 Долг</Link>
+            <button onClick={() => setTransferOpen(true)} className="btn-secondary text-xs">
+              💸 Перевести
+            </button>
+          </div>
+          <TransferModal
+            open={transferOpen}
+            onClose={() => setTransferOpen(false)}
+            recipientId={p.id}
+          />
+        </>
       )}
     </div>
   );

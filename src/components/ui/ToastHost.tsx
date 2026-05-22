@@ -18,6 +18,10 @@ const ICONS: Record<string, string> = {
   season_change: '✨',
   rumor_new: '👁️',
   custom: '📢',
+  transfer_received: '💸',
+  card_ship_duel: '⚔️',
+  card_ship_market: '🛒',
+  card_ship_finished: '🏁',
 };
 
 export function ToastHost() {

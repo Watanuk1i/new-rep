@@ -20,6 +20,7 @@ const TITLES: Record<string, string> = {
   '/pari': 'Пари',
   '/pari/create': 'Создать пари',
   '/super-games': 'Супер игры',
+  '/transfers': 'Переводы',
   '/notifications': 'События',
   '/rumors': 'Слухи',
   '/debts': 'Долги',
@@ -181,6 +182,7 @@ export function TopBar() {
               <DrawerLink href={`/profile/${currentUser.id}`} icon="👤" label="Профиль" pathname={pathname} />
             )}
             <DrawerLink href="/super-games" icon="🏟️" label="Супер игры" pathname={pathname} />
+            <DrawerLink href="/transfers" icon="💸" label="Переводы" pathname={pathname} />
             <DrawerLink href="/rumors" icon="👁️" label="Слухи" pathname={pathname} />
             <DrawerLink href="/debts" icon="📜" label="Долги" pathname={pathname} />
             <DrawerLink href="/rules" icon="⚖️" label="Правила" pathname={pathname} />

@@ -164,3 +164,94 @@ export interface RoomState {
   day: number;
   updated_at: string;
 }
+
+
+// =====================================================================
+// V2: Глобальные переводы йен и Большая игра «Карточный корабль»
+// =====================================================================
+
+export interface Transfer {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  amount: number;
+  comment: string;
+  related_game_id?: string | null;
+  created_at: string;
+}
+
+export type CardShipStatus =
+  | 'scheduled'
+  | 'collecting_stakes'
+  | 'active'
+  | 'finishing'
+  | 'finished'
+  | 'cancelled';
+
+export interface CardShipGame {
+  id: string;
+  super_game_id?: string | null;
+  status: CardShipStatus;
+  entry_fee: number;
+  bank: number;
+  participant_ids: string[];
+  winner_ids: string[];
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
+}
+
+export type CardType = 'rock' | 'scissors' | 'paper';
+export type CardShipPlayerStatus = 'active' | 'out_of_cards' | 'survived' | 'lost';
+
+export interface CardShipState {
+  id: string;
+  game_id: string;
+  player_id: string;
+  rocks: number;
+  scissors: number;
+  papers: number;
+  stars: number;
+  cards_played: number;
+  duels_count: number;
+  status: CardShipPlayerStatus;
+}
+
+export type CardShipDuelStatus =
+  | 'pending'
+  | 'accepted'
+  | 'revealed'
+  | 'declined'
+  | 'cancelled'
+  | 'expired';
+
+export interface CardShipDuel {
+  id: string;
+  game_id: string;
+  challenger_id: string;
+  opponent_id: string;
+  status: CardShipDuelStatus;
+  challenger_card?: CardType | null;
+  opponent_card?: CardType | null;
+  winner_id?: string | null;
+  accept_deadline?: string | null;
+  pick_deadline?: string | null;
+  created_at: string;
+  resolved_at?: string | null;
+}
+
+export type CardShipListingStatus = 'open' | 'sold' | 'cancelled';
+export type CardShipItemType = 'card' | 'star';
+
+export interface CardShipListing {
+  id: string;
+  game_id: string;
+  seller_id: string;
+  item_type: CardShipItemType;
+  card_type?: CardType | null;
+  price: number;
+  status: CardShipListingStatus;
+  buyer_id?: string | null;
+  created_at: string;
+  sold_at?: string | null;
+}

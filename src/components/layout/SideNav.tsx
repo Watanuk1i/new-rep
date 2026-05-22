@@ -14,6 +14,7 @@ const ITEMS = [
   { href: '/games', icon: '🎲', label: 'Игры' },
   { href: '/pari', icon: '💰', label: 'Пари' },
   { href: '/super-games', icon: '🏟️', label: 'Супер игры' },
+  { href: '/transfers', icon: '💸', label: 'Переводы' },
   { href: '/notifications', icon: '🔔', label: 'События' },
   { href: '/rumors', icon: '👁️', label: 'Слухи' },
   { href: '/debts', icon: '📜', label: 'Долги' },
