@@ -2411,6 +2411,7 @@ const MINI_GAMES: { type: string; label: string; emoji: string; minPlayers: numb
   { type: 'mini_liar_dice',  label: 'Лжец на кубиках',  emoji: '🎲', minPlayers: 2, maxPlayers: 6, defaultStake: 50_000 },
   { type: 'mini_despair_21', label: '21 отчаяния',      emoji: '🂡', minPlayers: 1, maxPlayers: 5, defaultStake: 50_000 },
   { type: 'mini_ransom',     label: 'Выкупной стол',    emoji: '🃟', minPlayers: 1, maxPlayers: 1, defaultStake: 0, allowsDebt: true },
+  { type: 'mini_joker',      label: 'Достать Джокера',  emoji: '🎴', minPlayers: 2, maxPlayers: 6, defaultStake: 50_000 },
 ];
 
 function MiniGamesCreator() {
@@ -2424,6 +2425,7 @@ function MiniGamesCreator() {
   const [error, setError] = useState<string | null>(null);
   const [debtId, setDebtId] = useState<string>(''); // для выкупного стола
   const [debts, setDebts] = useState<any[]>([]);
+  const [jokerMode, setJokerMode] = useState<'quick' | 'long' | 'advanced'>('quick');
 
   const meta = MINI_GAMES.find(m => m.type === pickedType)!;
   const eligible = state.participants.filter(p => isPlayer(p) && p.is_active);
@@ -2485,6 +2487,27 @@ function MiniGamesCreator() {
       const debtorId = debt.debtor_id;
       const arr = [debtorId];
       for (const id of arr) selected.add(id);
+    } else if (pickedType === 'mini_joker') {
+      initialState = {
+        mode: jokerMode,
+        stake,
+        fee_paid: {},
+        bank: 0,
+        treasury_fee: 0,
+        payout_bank: 0,
+        deck: [],
+        turn_order: [],
+        current_idx: 0,
+        eliminated_ids: [],
+        skip_used_ids: [],
+        hint_uses: {},
+        pending_pass_from: null,
+        pending_pass_to: null,
+        actions: [],
+        winner_ids: [],
+        loser_ids: [],
+        status: 'waiting_players',
+      };
     }
 
     const finalIds = pickedType === 'mini_ransom' ? Array.from(selected) : ids;
@@ -2558,6 +2581,25 @@ function MiniGamesCreator() {
                 onChange={e => setStake(Math.max(10_000, Number(e.target.value)))}
                 className="input-field font-mono text-sm"
               />
+            </div>
+          )}
+
+          {pickedType === 'mini_joker' && (
+            <div>
+              <div className="text-[10px] text-gold/80 mb-1">Режим</div>
+              <div className="grid grid-cols-3 gap-1">
+                {(['quick', 'long', 'advanced'] as const).map(m => (
+                  <button key={m}
+                    className={cn('px-2 py-2 rounded-lg text-xs border',
+                      jokerMode === m ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/60 border-white/8')}
+                    onClick={() => setJokerMode(m)}
+                  >
+                    {m === 'quick' && '⚡ Быстрый'}
+                    {m === 'long' && '🌀 Долгий'}
+                    {m === 'advanced' && '♟️ Расширенный'}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

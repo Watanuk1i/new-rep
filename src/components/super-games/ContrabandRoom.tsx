@@ -15,6 +15,7 @@ import { Yen } from '@/components/ui/Yen';
 import { cn, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import { chargeToTreasury, payoutFromTreasury } from '@/lib/store/tx';
+import { TogamiInfluencePanel } from '@/components/super-games/TogamiInfluencePanel';
 import {
   TOTAL_ROUNDS, TEAM_SIZE, TEAM_LABELS, TEAM_COLORS,
   MAX_SMUGGLE_AMOUNT, INSPECTOR_MISTAKE_PENALTY, EMPTY_CASE_REWARD,
@@ -101,6 +102,13 @@ export function ContrabandRoom({ game }: { game: SuperGame }) {
   return (
     <div className="space-y-4">
       <Header game={game} cb={cb} />
+
+      {/* Влияние Бьякуи (Фонд Тогами) */}
+      <TogamiInfluencePanel
+        game={game}
+        gameKind="contraband"
+        participantIds={game.participant_ids ?? []}
+      />
 
       {/* Команды */}
       <TeamsBlock cb={cb} participants={participants} isAdmin={isAdmin} game={game} />

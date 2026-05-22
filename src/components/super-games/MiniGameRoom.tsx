@@ -21,6 +21,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import {
   applyTransfer, chargeToTreasury, payoutFromTreasury, transferBetweenPlayers,
 } from '@/lib/store/tx';
+import { JokerDrawRoom } from './JokerDrawRoom';
 import {
   TREASURY_FEE_RATE, applyTreasuryFee,
   spinRedBlack, findUniqueMax,
@@ -69,7 +70,10 @@ export function MiniGameRoom({ game }: { game: SuperGame }) {
     case 'mini_liar_dice':   return <LiarDiceRoom game={game} />;
     case 'mini_despair_21':  return <Despair21Room game={game} />;
     case 'mini_ransom':      return <RansomRoom game={game} />;
-    default: return null;
+    default:
+      // Поддержка mini_joker (3 режима) живёт отдельным файлом
+      if (game.type === 'mini_joker') return <JokerDrawRoom game={game} />;
+      return null;
   }
 }
 

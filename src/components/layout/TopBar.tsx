@@ -188,6 +188,7 @@ export function TopBar() {
               <DrawerLink href={`/profile/${currentUser.id}`} icon="👤" label="Профиль" pathname={pathname} />
             )}
             <DrawerLink href="/super-games" icon="🏟️" label="Супер игры" pathname={pathname} />
+            <DrawerLink href="/togami" icon="💼" label="Фонд Тогами" pathname={pathname} />
             <DrawerLink href="/transfers" icon="💸" label="Переводы" pathname={pathname} />
             <DrawerLink href="/rumors" icon="👁️" label="Слухи" pathname={pathname} />
             <DrawerLink href="/debts" icon="📜" label="Долги" pathname={pathname} />

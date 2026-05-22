@@ -102,7 +102,7 @@ export interface SuperGame {
   entry_fee: number;
   bank: number;
   winner_id?: string | null;
-  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | DebtTowerState | DebtAuctionState | RebellionState | EliteTrialState | ThroneState | MiniGameRedBlackState | MiniGameBlindBidState | MiniGameLiarDiceState | MiniGameDespair21State | MiniGameRansomState | Record<string, any>;
+  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | DebtTowerState | DebtAuctionState | RebellionState | EliteTrialState | ThroneState | MiniGameRedBlackState | MiniGameBlindBidState | MiniGameLiarDiceState | MiniGameDespair21State | MiniGameRansomState | JokerDrawState | Record<string, any>;
   created_at: string;
 }
 
@@ -632,6 +632,47 @@ export interface MiniGameRansomState {
   new_debt_amount?: number;
   postponed?: boolean;
   status: 'waiting_remove' | 'waiting_pick' | 'finished' | 'cancelled';
+}
+
+// ===== Достать Джокера (mini_joker, 3 режима) =====
+export type JokerDrawMode = 'quick' | 'long' | 'advanced';
+export type JokerDrawCard = 'normal' | 'joker';
+
+export interface JokerDrawAction {
+  id: string;
+  player_id: string;
+  action_type: 'draw' | 'skip' | 'hint' | 'pass_request' | 'pass_accept' | 'pass_decline';
+  target_player_id?: string | null;
+  card_result?: JokerDrawCard | null;
+  risk_percent?: number;
+  risk_level?: 'low' | 'medium' | 'high';
+  money_delta?: number;
+  player_eliminated?: boolean;
+  created_at: string;
+}
+
+export interface JokerDrawState {
+  mode: JokerDrawMode;
+  stake: number;
+  fee_paid: Record<string, number>;
+  bank: number;
+  treasury_fee: number;
+  payout_bank: number;
+  /** Текущая колода (1 джокер + сколько обычных осталось). */
+  deck: JokerDrawCard[];
+  turn_order: string[];
+  current_idx: number;          // индекс в turn_order
+  eliminated_ids: string[];
+  skip_used_ids: string[];
+  /** Покупки подсказок: playerId → массив значений шанса в момент покупки. */
+  hint_uses: Record<string, number>;
+  /** Запрос на передачу хода. */
+  pending_pass_from?: string | null;
+  pending_pass_to?: string | null;
+  actions: JokerDrawAction[];
+  winner_ids: string[];
+  loser_ids: string[];
+  status: 'waiting_players' | 'active' | 'finished' | 'cancelled';
 }
 
 export interface AcademyEvent {

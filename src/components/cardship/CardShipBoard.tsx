@@ -11,6 +11,7 @@ import { useStore, uid } from '@/lib/store/StoreProvider';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen, YenIcon } from '@/components/ui/Yen';
 import { TransferModal } from '@/components/economy/TransferModal';
+import { TogamiInfluencePanel } from '@/components/super-games/TogamiInfluencePanel';
 import { cn, formatYenFull, timeAgo } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import {
@@ -642,6 +643,13 @@ export function CardShipBoard({ superGame }: Props) {
         onStart={startGame}
         onCancel={cancelGame}
         onFinish={finishGame}
+      />
+
+      {/* Влияние Бьякуи (Фонд Тогами) */}
+      <TogamiInfluencePanel
+        game={superGame}
+        gameKind="card_ship"
+        participantIds={game.participant_ids ?? []}
       />
 
       {/* Моя рука (для участника) */}

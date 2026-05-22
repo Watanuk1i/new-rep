@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { useStore, uid } from '@/lib/store/StoreProvider';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen, YenIcon } from '@/components/ui/Yen';
+import { JunkoInfluencePanel } from '@/components/super-games/JunkoInfluencePanel';
 import { cn } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import {
@@ -94,6 +95,8 @@ export function NineBulletsRoom({ game }: { game: SuperGame }) {
   return (
     <div className="space-y-4">
       <Header game={game} nb={nb} />
+
+      <JunkoInfluencePanel game={game} />
 
       {nb.status === 'scheduled' && (
         <div className="glass p-4 text-center text-sm text-muted-foreground">
