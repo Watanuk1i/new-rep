@@ -264,29 +264,41 @@ CREATE INDEX IF NOT EXISTS idx_card_ship_listings_game ON card_ship_listings(gam
 
 -- =====================================================================
 -- 4) RLS off, GRANTs on. Это самое важное для anon-доступа с сайта.
+--
+-- ВАЖНО: дополнительно создаём политику anon_full_access на каждой таблице
+-- как страховку. Если кто-то в Supabase Dashboard включит RLS обратно
+-- (или сработает «Harden Data API» / автонастройка для новых таблиц),
+-- доступ для anon/authenticated всё равно останется и сайт не отдаст [].
 -- =====================================================================
-ALTER TABLE room_state          DISABLE ROW LEVEL SECURITY;
-ALTER TABLE participants        DISABLE ROW LEVEL SECURITY;
-ALTER TABLE challenges          DISABLE ROW LEVEL SECURITY;
-ALTER TABLE pari                DISABLE ROW LEVEL SECURITY;
-ALTER TABLE debts               DISABLE ROW LEVEL SECURITY;
-ALTER TABLE super_games         DISABLE ROW LEVEL SECURITY;
-ALTER TABLE events              DISABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications       DISABLE ROW LEVEL SECURITY;
-ALTER TABLE rumors              DISABLE ROW LEVEL SECURITY;
-ALTER TABLE content_blocks      DISABLE ROW LEVEL SECURITY;
-ALTER TABLE history             DISABLE ROW LEVEL SECURITY;
--- V2
-ALTER TABLE transfers           DISABLE ROW LEVEL SECURITY;
-ALTER TABLE card_ship_games     DISABLE ROW LEVEL SECURITY;
-ALTER TABLE card_ship_states    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE card_ship_duels     DISABLE ROW LEVEL SECURITY;
-ALTER TABLE card_ship_listings  DISABLE ROW LEVEL SECURITY;
+DO $rls$
+DECLARE
+  t TEXT;
+  tables TEXT[] := ARRAY[
+    'room_state','participants','challenges','pari','debts','super_games',
+    'events','notifications','rumors','content_blocks','history',
+    'transfers','card_ship_games','card_ship_states','card_ship_duels','card_ship_listings'
+  ];
+BEGIN
+  FOREACH t IN ARRAY tables LOOP
+    -- 1) RLS выключен — дефолт проекта.
+    EXECUTE format('ALTER TABLE public.%I DISABLE ROW LEVEL SECURITY', t);
+    -- 2) Но политика всё равно есть на случай, если RLS включат обратно.
+    EXECUTE format('DROP POLICY IF EXISTS anon_full_access ON public.%I', t);
+    EXECUTE format(
+      'CREATE POLICY anon_full_access ON public.%I FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)',
+      t
+    );
+  END LOOP;
+END
+$rls$;
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL TABLES    IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
+
+-- Принудительный reload PostgREST schema cache (исправляет ошибки 406/schema cache).
+NOTIFY pgrst, 'reload schema';
 
 -- =====================================================================
 -- 5) ДАННЫЕ
