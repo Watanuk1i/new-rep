@@ -680,7 +680,7 @@ function TreasuryTab() {
   return (
     <div className="space-y-3">
       <div className="glass-strong gold-border p-4">
-        <div className="text-[10px] uppercase tracking-widest text-amber-300/80 mb-1">🏛️ Казна студсовета</div>
+        <div className="text-[10px] uppercase tracking-widest text-amber-300/80 mb-1">🏛️ Фонд Тогами · Казна академии</div>
         <Yen amount={treasury?.balance || 0} full className="text-3xl text-amber-200" iconClass="w-7 h-7" />
         <p className="text-[10px] text-muted mt-2">
           Системный кошелёк: взносы, штрафы, комиссии, выплаты против манекенов.
@@ -782,7 +782,7 @@ function ResetEconomySection() {
           await sb.from('participants').update({ balance: target }).eq('id', p.id);
         }
         // Особые системные аккаунты
-        await sb.from('participants').update({ balance: 8_000_000 }).eq('id', 'p-togami-fund');
+        // p-togami-fund устарел — фонд = p-treasury. Оставлен ради старых данных, баланс не сбрасываем.
       }
       if (opts.debts) {
         await sb.from('debts').delete().neq('id', '');
@@ -898,7 +898,7 @@ function FullResetSection() {
       const seed: Array<[string, string, string, number, number, boolean]> = [
         // id, display_name, status, balance, reputation, is_active
         ['p-gm',         'Монокума',           'gm',       999_999_999, 100, true],
-        ['p-treasury',   'Казна студсовета',   'treasury', 15_000_000,  0,   true],
+        ['p-treasury',   'Фонд Тогами',        'treasury', 15_000_000,  0,   true],
         ['p-queen',      'Селестия Люденберг', 'queen',    5_000_000,   50,  true],
         ['p-1',          'Макото Наэги',       'player',   1_000_000,   60,  false],
         ['p-2',          'Кёко Киригири',      'player',   1_500_000,   70,  false],
@@ -924,8 +924,8 @@ function FullResetSection() {
         ['p-incog-1',    'Инкогнито',          'player',   1_000_000,   0,   true],
         ['p-incog-2',    'Инкогнито',          'player',   1_000_000,   0,   true],
         ['p-incog-3',    'Инкогнито',          'player',   1_000_000,   0,   true],
-        ['p-togami-fund','Фонд Тогами',        'collector',8_000_000,   0,   false],
-        ['p-kirumi-fund','Кредитный резерв Кируми','collector',8_000_000,0,  true],
+        // Старые фонды как отдельные аккаунты больше не нужны:
+        // Фонд Тогами объединён с p-treasury, Кируми работает напрямую.
       ];
 
       for (const [id, name, status, balance, reputation, is_active] of seed) {

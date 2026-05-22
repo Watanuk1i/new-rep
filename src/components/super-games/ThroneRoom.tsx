@@ -982,7 +982,7 @@ async function transferTreasury(game: SuperGame) {
   const amount = t?.balance ?? 0;
   if (amount <= 0) return;
   await payoutFromTreasury(cur.challenger_id, amount, 'Финал · передача Казны новому директору', `/super-games/${game.id}`);
-  await pushEvent('Казна студсовета передана новому директору', undefined, `/super-games/${game.id}`);
+  await pushEvent('Фонд Тогами передан новому директору', undefined, `/super-games/${game.id}`);
 }
 
 async function cancelOverdueDebts(game: SuperGame) {

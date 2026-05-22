@@ -282,7 +282,15 @@ function VoteButton({ kind, gameId, voterId }: { kind: 'yes' | 'no'; gameId: str
     if (busy) return;
     setBusy(true);
     const ok = await castMinorityVote(gameId, voterId, kind);
-    if (!ok) alert('Не удалось зафиксировать голос (раунд закрыт или голос уже отдан).');
+    if (!ok) {
+      alert(
+        'Не удалось зафиксировать голос.\n\n' +
+        'Возможные причины:\n' +
+        '• раунд уже закрыт;\n' +
+        '• голос уже отдан и его нельзя переписать;\n' +
+        '• вы выбыли из игры (выбывшие игроки не голосуют).'
+      );
+    }
     setBusy(false);
   };
   return (

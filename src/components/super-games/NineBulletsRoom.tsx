@@ -170,7 +170,7 @@ function Header({ game, nb }: { game: SuperGame; nb: NineBulletsState }) {
           </div>
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-widest text-gold/70">Казна</div>
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Фонд</div>
           <Yen amount={treasury?.balance || 0} className="text-xs text-amber-200 mt-1" iconClass="w-3 h-3" />
         </div>
       </div>

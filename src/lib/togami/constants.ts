@@ -1,9 +1,11 @@
 // Константы для логики Фонда Тогами и игр Бьякуи.
+// Единый счёт: «Фонд Тогами» = TREASURY (p-treasury). Отдельного аккаунта p-togami-fund больше нет.
+// Хранится так чтобы не ломать импорты, но указывает на p-treasury.
 
-export const TOGAMI_FUND_ID = 'p-togami-fund';
+export const TOGAMI_FUND_ID = 'p-treasury';
 export const BYAKUYA_ID = 'p-3';
 
-export const TOGAMI_FUND_START_BALANCE = 8_000_000; // было 20M
+export const TOGAMI_FUND_START_BALANCE = 15_000_000;
 
 // Карточный корабль (обновлено под состав 11 игроков)
 export const CARD_SHIP_LOAN_AMOUNT = 700_000;

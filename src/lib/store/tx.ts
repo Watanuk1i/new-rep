@@ -6,7 +6,7 @@
 import { getSupabase } from '@/lib/supabase/client';
 
 export const TREASURY_ID = 'p-treasury';
-export const TREASURY_NAME = 'Казна студсовета';
+export const TREASURY_NAME = 'Фонд Тогами';
 
 export interface TxResult {
   ok: boolean;

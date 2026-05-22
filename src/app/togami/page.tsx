@@ -52,11 +52,11 @@ export default function TogamiPage() {
 
   const createFund = async () => {
     if (!sb) return;
-    if (!confirm('Создать системный аккаунт «Фонд Тогами» с балансом 20M? Деньги в Фонд НЕ списываются ни с кого, это стартовый капитал по лору.')) return;
+    if (!confirm('Создать системный аккаунт «Фонд Тогами» с балансом 15M? Это резервный сценарий — обычно фонд уже создан как Казна академии.')) return;
     await sb.from('participants').insert({
       id: TOGAMI_FUND_ID,
       display_name: 'Фонд Тогами',
-      status: 'collector',
+      status: 'treasury',
       balance: TOGAMI_FUND_START_BALANCE,
       reputation: 0,
       wins: 0, losses: 0,
@@ -67,25 +67,21 @@ export default function TogamiPage() {
       id: 'h-' + Date.now(),
       participant_id: TOGAMI_FUND_ID,
       action: 'fund_created',
-      description: 'Создан Фонд Тогами со стартовым балансом 20 000 000',
+      description: 'Создан Фонд Тогами со стартовым балансом 15 000 000',
       amount: TOGAMI_FUND_START_BALANCE,
     });
   };
 
   if (!fund) {
+    // p-treasury всегда должен быть в БД. Эта ветка останется только если нет seed.
     return (
       <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-4">
         <div className="glass-strong gold-border p-5">
           <div className="text-[10px] uppercase tracking-widest text-gold/70">Фонд Тогами</div>
-          <h1 className="font-heading text-2xl font-bold text-gradient-gold mt-1">Фонд не создан</h1>
+          <h1 className="font-heading text-2xl font-bold text-gradient-gold mt-1">Фонд не найден</h1>
           <p className="text-xs text-muted-foreground mt-2">
-            Системный аккаунт <code>{TOGAMI_FUND_ID}</code> не найден. Создание нужно для финансовой логики Бьякуи в Карточном корабле и Контрабанде капитала.
+            Системный аккаунт <code>{TOGAMI_FUND_ID}</code> не найден. Запустите setup.sql или сделайте «Полный сброс БД» из админки.
           </p>
-          {canManage && (
-            <button className="btn-primary mt-3 w-full" onClick={createFund}>
-              💼 Создать Фонд Тогами (20M)
-            </button>
-          )}
         </div>
       </div>
     );

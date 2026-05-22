@@ -108,7 +108,7 @@ export default function DebtsPage() {
         <div className="glass-strong gold-border p-4">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-amber-300/80">🏛️ Долг Казне студсовета</div>
+              <div className="text-[10px] uppercase tracking-widest text-amber-300/80">🏛️ Долг Фонду Тогами</div>
               <div className="text-xs text-muted-foreground">Системные списания, превысившие баланс</div>
             </div>
             <Yen amount={myTreasuryDebtTotal} className="text-base text-red-300" iconClass="w-4 h-4" />
@@ -132,7 +132,10 @@ export default function DebtsPage() {
           { key: 'incoming', label: `Запросы · ${incoming.length}`, icon: '📩' },
           { key: 'mine', label: 'Активные', icon: '⏳' },
           { key: 'closed', label: 'Архив', icon: '✓' },
-          { key: 'create', label: 'Создать', icon: '+' },
+          // «Создать» доступно только админу/Кируми/Селестии — обычные игроки используют /transfers и /loans
+          ...(isAdmin || (currentUser && (currentUser.id === 'p-15' || currentUser.id === 'p-queen'))
+            ? [{ key: 'create', label: 'Создать', icon: '+' }]
+            : []),
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key as any)}
             className={cn('tab-pill', tab === t.key ? 'tab-pill-active' : 'tab-pill-inactive')}>
@@ -140,6 +143,14 @@ export default function DebtsPage() {
           </button>
         ))}
       </div>
+
+      {/* Подсказка: для обычных игроков отдельные правильные пути */}
+      {!isAdmin && currentUser && currentUser.id !== 'p-15' && currentUser.id !== 'p-queen' && (
+        <div className="glass p-3 text-[11px] text-muted-foreground space-y-1">
+          <div>💸 Перевести деньги другому: <Link href="/transfers" className="text-gold underline">/transfers</Link></div>
+          <div>💳 Запросить официальный кредит у Кируми: <Link href="/loans" className="text-gold underline">/loans</Link></div>
+        </div>
+      )}
 
       {tab === 'create' ? (
         <CreateDebtForm onCreated={() => setTab('mine')} />
@@ -191,7 +202,7 @@ export default function DebtsPage() {
                     creditor.id === TREASURY_ID ? (
                       <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30">
                         <span className="text-base leading-none">🏛️</span>
-                        <span className="text-amber-200 font-bold">Казне</span>
+                        <span className="text-amber-200 font-bold">Фонду Тогами</span>
                       </span>
                     ) : (
                       <Link href={`/profile/${creditor.id}`} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gold/10 border border-gold/20">

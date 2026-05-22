@@ -80,11 +80,70 @@ export interface Debt {
   id: string;
   debtor_id: string;
   creditor_id: string;
-  amount: number;
+  amount: number;            // current_amount — текущая сумма к возврату
   description?: string | null;
   due_day: number;
-  status: 'requested' | 'active' | 'closed' | 'declined' | 'overdue' | 'paid' | 'auctioned' | 'cancelled';
+  status:
+    | 'requested' | 'active' | 'closed' | 'declined' | 'overdue'
+    | 'paid' | 'auctioned' | 'cancelled'
+    // v2: расширенные статусы
+    | 'due_soon' | 'collection' | 'restructured' | 'pet_candidate';
   initiator: 'debtor' | 'creditor';
+  created_at: string;
+
+  // v2: расширенные поля
+  principal_amount?: number;          // изначальная сумма выдачи
+  interest_rate?: number;             // %, например 20 = 20%
+  source?:
+    | 'manual' | 'kirumi_loan' | 'treasury_loan'
+    | 'game_result' | 'debt_tower' | 'auction';
+  source_game_id?: string | null;
+  collector_id?: string | null;       // Мондо или назначенный взыскатель
+  executor_id?: string | null;        // Пеко или другой исполнитель
+  collateral_text?: string | null;
+  note?: string | null;
+  paid_at?: string | null;
+}
+
+// v2: запрос на кредит у Кируми
+export interface LoanRequest {
+  id: string;
+  borrower_id: string;
+  requested_amount: number;
+  reason?: string | null;
+  requested_due_day?: number | null;
+  comment?: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'counter_offer' | 'accepted' | 'cancelled';
+  proposed_amount?: number | null;
+  proposed_interest_rate?: number | null;
+  proposed_due_day?: number | null;
+  collateral_text?: string | null;
+  created_by_id?: string | null;
+  reviewed_by_id?: string | null;
+  resulting_debt_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// v2: выплата по долгу
+export interface DebtPayment {
+  id: string;
+  debt_id: string;
+  payer_id: string;
+  amount: number;
+  mondo_commission?: number;
+  peko_commission?: number;
+  owner_received?: number;
+  created_at: string;
+}
+
+// v2: заметка взыскания
+export interface DebtCollectionNote {
+  id: string;
+  debt_id: string;
+  author_id: string;
+  status: 'assigned' | 'warned' | 'refused' | 'promised' | 'partial_paid' | 'report_sent' | 'note';
+  text?: string | null;
   created_at: string;
 }
 
