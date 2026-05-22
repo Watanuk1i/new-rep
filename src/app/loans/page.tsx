@@ -61,15 +61,15 @@ export default function LoansPage() {
     return () => { alive = false; sb.removeChannel(ch); };
   }, [sb]);
 
-  const tabs: { key: Tab; label: string; icon: string; show: boolean }[] = [
-    { key: 'request',          label: 'Запросить', icon: '📝', show: !!currentUser && isPlayer(currentUser) },
-    { key: 'my_requests',      label: 'Мои запросы', icon: '📨', show: !!currentUser },
-    { key: 'kirumi_inbox',     label: 'Запросы (Кируми)', icon: '📥', show: isKirumiUser || isAdmin },
-    { key: 'kirumi_loans',     label: 'Кредиты Кируми', icon: '💳', show: isKirumiUser || isAdmin },
-    { key: 'all_debts',        label: 'Все долги', icon: '📜', show: isAdmin },
-    { key: 'mondo_collection', label: 'Взыскания (Мондо)', icon: '🔨', show: isMondoUser || isAdmin },
-    { key: 'peko_my',          label: 'Мои взыскания (Пеко)', icon: '⚔️', show: isPekoUser || isAdmin },
-  ].filter(t => t.show);
+  const tabs: { key: Tab; label: string; icon: string; show: boolean }[] = ([
+    { key: 'request' as Tab,          label: 'Запросить', icon: '📝', show: !!currentUser && isPlayer(currentUser) },
+    { key: 'my_requests' as Tab,      label: 'Мои запросы', icon: '📨', show: !!currentUser },
+    { key: 'kirumi_inbox' as Tab,     label: 'Запросы (Кируми)', icon: '📥', show: isKirumiUser || isAdmin },
+    { key: 'kirumi_loans' as Tab,     label: 'Кредиты Кируми', icon: '💳', show: isKirumiUser || isAdmin },
+    { key: 'all_debts' as Tab,        label: 'Все долги', icon: '📜', show: isAdmin },
+    { key: 'mondo_collection' as Tab, label: 'Взыскания (Мондо)', icon: '🔨', show: isMondoUser || isAdmin },
+    { key: 'peko_my' as Tab,          label: 'Мои взыскания (Пеко)', icon: '⚔️', show: isPekoUser || isAdmin },
+  ]).filter(t => t.show);
 
   // Подгоняем активную вкладку, если текущая недоступна
   useEffect(() => {
