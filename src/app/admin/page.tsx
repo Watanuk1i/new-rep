@@ -351,6 +351,26 @@ function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
         <button onClick={save} className="btn-primary">💾 Сохранить</button>
         <button onClick={remove} className="btn-danger">✕ Удалить</button>
       </div>
+
+      <div className="glass p-4 space-y-2">
+        <div className="text-[10px] uppercase tracking-widest text-gold/70">Видимость</div>
+        <div className="text-[11px] text-muted-foreground">
+          {p.is_active
+            ? 'Игрок виден в активном составе и может участвовать в играх.'
+            : 'Игрок скрыт — не появляется в списках выбора участников.'}
+        </div>
+        <button
+          onClick={async () => {
+            if (!sb) return;
+            await sb.from('participants').update({ is_active: !p.is_active }).eq('id', id);
+            onBack();
+          }}
+          className={cn('w-full text-xs',
+            p.is_active ? 'btn-secondary' : 'btn-success')}
+        >
+          {p.is_active ? '🙈 Деактивировать (скрыть)' : '👁 Активировать (показать)'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -2821,6 +2841,17 @@ function MiniGamesCreator() {
                     {m === 'advanced' && '♟️ Расширенный'}
                   </button>
                 ))}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
+                {jokerMode === 'quick' && (
+                  <>Один тянет джокера → проиграл, остальные делят банк. Колода 10+1, без бонусов.</>
+                )}
+                {jokerMode === 'long' && (
+                  <>Тянет джокера → выбывает, колода обновляется. Играют до одного. Без бонусов.</>
+                )}
+                {jokerMode === 'advanced' && (
+                  <>Как «Долгий» + платные действия: пропуск 20k (1 раз), подсказка 30k, передача хода. <b>С бонусами за деньги.</b></>
+                )}
               </div>
             </div>
           )}

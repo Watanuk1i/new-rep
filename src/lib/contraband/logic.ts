@@ -4,16 +4,16 @@ export type Team = 'north' | 'south';
 export type InspectorAction = 'pass' | 'inspect';
 export type RoundResult = 'passed' | 'caught' | 'underestimated' | 'empty_case_trap';
 
-// Денежные константы из ТЗ
-export const MAX_SMUGGLE_AMOUNT = 500_000;
+// Денежные константы (обновлено под состав 11 игроков из patch_11)
+export const MAX_SMUGGLE_AMOUNT = 400_000;          // было 500k
 export const INSPECTOR_MISTAKE_PENALTY = 100_000;
 export const EMPTY_CASE_REWARD = 100_000;
 export const PERSONAL_COMMISSION_RATE = 0.10;
-export const WINNING_TEAM_REWARD = 200_000;
-export const LOSING_TEAM_PENALTY = 100_000;
-export const TOTAL_ROUNDS = 7;
-export const TEAM_SIZE = 7;
-export const INITIAL_TEAM_SAFE = 3_000_000;
+export const WINNING_TEAM_REWARD = 150_000;          // было 200k
+export const LOSING_TEAM_PENALTY = 75_000;           // было 100k
+export const TOTAL_ROUNDS = 4;                       // было 7
+export const TEAM_SIZE = 4;                          // было 7
+export const INITIAL_TEAM_SAFE = 2_000_000;          // было 3M
 
 export const TEAM_LABELS: Record<Team, string> = {
   north: 'Северный банк',

@@ -42,4 +42,5 @@ next-env.d.ts
 
 # Spec drafts
 claude_opus_*.txt
+Rab*.txt
 build.log

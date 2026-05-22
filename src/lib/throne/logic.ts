@@ -4,14 +4,14 @@ export type ThroneCard = 'emperor' | 'citizen' | 'pet';
 export type ThroneSide = 'celestia' | 'challenger';
 export type ThronePhase = 'first_half' | 'second_half' | 'sudden_death';
 
-// Денежные константы (ТЗ)
-export const CELESTIA_FINAL_STAKE = 5_000_000;
-export const CHALLENGER_FINAL_STAKE = 2_000_000;
+// Денежные константы (обновлено под состав 11 игроков из patch_11)
+export const CELESTIA_FINAL_STAKE = 4_000_000;   // было 5M
+export const CHALLENGER_FINAL_STAKE = 1_500_000; // было 2M
 
-export const PEEK_CARD_COST = 500_000;
-export const CHANGE_CARD_COST = 700_000;
-export const REPLAY_LOSS_COST = 1_000_000;
-export const BLOCK_CELESTIA_PRIVILEGE_COST = 1_500_000;
+export const PEEK_CARD_COST = 400_000;           // было 500k
+export const CHANGE_CARD_COST = 600_000;         // было 700k
+export const REPLAY_LOSS_COST = 800_000;         // было 1M
+export const BLOCK_CELESTIA_PRIVILEGE_COST = 1_200_000; // было 1.5M
 
 export const TOTAL_ROUNDS = 10;
 export const HALF_ROUNDS = 5;

@@ -3,14 +3,14 @@
 export const TOGAMI_FUND_ID = 'p-togami-fund';
 export const BYAKUYA_ID = 'p-3';
 
-export const TOGAMI_FUND_START_BALANCE = 20_000_000;
+export const TOGAMI_FUND_START_BALANCE = 8_000_000; // было 20M
 
-// Карточный корабль
-export const CARD_SHIP_LOAN_AMOUNT = 1_000_000;
-export const CARD_SHIP_REQUIRED_RETURN = 1_200_000;
-export const CARD_SHIP_INTEREST_RATE = 0.20;
+// Карточный корабль (обновлено под состав 11 игроков)
+export const CARD_SHIP_LOAN_AMOUNT = 700_000;
+export const CARD_SHIP_REQUIRED_RETURN = 850_000;
+export const CARD_SHIP_INTEREST_RATE = 0.214;     // ≈21%
 export const CARD_SHIP_FAILURE_RETURN_RATE = 0.50;
-export const CARD_SHIP_FAILURE_PENALTY = 1_000_000;
+export const CARD_SHIP_FAILURE_PENALTY = 700_000;
 
 // Контрабанда капитала
 export const CONTRABAND_TURNOVER_COMMISSION = 0.05;

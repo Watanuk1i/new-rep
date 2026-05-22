@@ -86,7 +86,8 @@ export function JunkoInfluencePanel({ game }: { game: SuperGame }) {
             Джунко Эношима · режиссёр хаоса
           </div>
           <div className="text-[10px] text-muted-foreground">
-            Не меняет патроны и не управляет результатом — только провоцирует.
+            Не меняет патроны и не управляет результатом. Может усложнять торги или ставить
+            Стрелка перед сложным выбором.
           </div>
         </div>
       </div>

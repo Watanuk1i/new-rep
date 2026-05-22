@@ -23,7 +23,7 @@ export const DEBT_OVERDUE_INTEREST = 0.20;
 export const MONDO_COLLECTION_COMMISSION = 0.10;
 
 export const MIN_PLAYERS = 4;
-export const MAX_PLAYERS = 8;
+export const MAX_PLAYERS = 7;  // было 8 — снижено под 11 человек
 
 export interface FloorChoiceOutcome {
   /** Денежная дельта на этаже (только для риска и оплаты). */

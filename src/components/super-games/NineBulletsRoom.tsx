@@ -355,7 +355,8 @@ function AuctionPhase({
     round.auction_status === 'open' && !myBidExisting;
 
   const [seatChoice, setSeatChoice] = useState<number | ''>('');
-  const [amount, setAmount] = useState(10000);
+  // Стартовая цена места = 0, чтобы случайно не списали деньги.
+  const [amount, setAmount] = useState(0);
   const [busy, setBusy] = useState(false);
 
   const submitBid = async () => {
@@ -491,16 +492,25 @@ function SwapPhase({
     newRounds[nb.current_round - 1] = {
       ...round, seats,
       shooter_swap: { a: Number(a), b: Number(b), paid: true },
+      status: 'shooting',
     };
-    await sb.from('super_games').update({ state: { ...nb, rounds: newRounds } }).eq('id', game.id);
+    await sb.from('super_games').update({
+      state: { ...nb, status: 'shooting', rounds: newRounds },
+    }).eq('id', game.id);
     setBusy(false);
   };
 
   const skip = async () => {
     if (!sb) return;
     const newRounds = [...nb.rounds];
-    newRounds[nb.current_round - 1] = { ...round, shooter_swap: { skipped: true } as any };
-    await sb.from('super_games').update({ state: { ...nb, rounds: newRounds } }).eq('id', game.id);
+    newRounds[nb.current_round - 1] = {
+      ...round,
+      shooter_swap: { skipped: true } as any,
+      status: 'shooting',
+    };
+    await sb.from('super_games').update({
+      state: { ...nb, status: 'shooting', rounds: newRounds },
+    }).eq('id', game.id);
   };
 
   const done = !!round.shooter_swap;

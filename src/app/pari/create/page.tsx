@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useStore, uid } from '@/lib/store/StoreProvider';
 import { cn, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
+import { PARI_TEMPLATES } from '@/lib/pari/templates';
 
 export default function CreatePariPage() {
   const { state, currentUser, addEvent } = useStore();
@@ -74,6 +75,46 @@ export default function CreatePariPage() {
 
   return (
     <div className="px-3 sm:px-4 py-4 max-w-md mx-auto space-y-4 animate-fade-in">
+      {/* Шаблоны пари по большим играм */}
+      <details className="glass p-4">
+        <summary className="cursor-pointer text-sm font-bold flex items-center justify-between">
+          <span>📋 Готовые шаблоны (по Большим играм)</span>
+          <span className="text-[10px] text-gold/80">{PARI_TEMPLATES.length} шт</span>
+        </summary>
+        <div className="mt-3 space-y-2 max-h-72 overflow-y-auto">
+          {Array.from(new Set(PARI_TEMPLATES.map(t => t.group))).map(group => (
+            <div key={group}>
+              <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-1">{group}</div>
+              <div className="space-y-1">
+                {PARI_TEMPLATES.filter(t => t.group === group).map((t, i) => (
+                  <button
+                    key={`${group}-${i}`}
+                    onClick={() => {
+                      setTitle(t.title);
+                      setKind(t.kind);
+                      if (t.kind === 'custom') {
+                        if (t.options === 'players') {
+                          setOptions(state.participants
+                            .filter(p => isPlayer(p) && p.is_active)
+                            .map(p => p.display_name));
+                        } else if (Array.isArray(t.options)) {
+                          setOptions(t.options);
+                        }
+                      } else {
+                        setOptions(['', '']);
+                      }
+                    }}
+                    className="text-left w-full px-2 py-1.5 rounded-lg bg-card/40 border border-white/8 active:bg-white/5 text-xs"
+                  >
+                    {t.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+
       <div className="glass p-4 space-y-3">
         <div>
           <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">Заголовок пари</label>

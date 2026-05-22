@@ -99,6 +99,16 @@ export function MinorityRoom({ game }: { game: SuperGame }) {
         </div>
       )}
 
+      {/* Личный баннер по последнему раунду: «Вы прошли» / «Вы выбыли» */}
+      {game.status === 'live' && !min.round && currentUser && isParticipant && min.history.length > 0 && (
+        <PersonalRoundResultBanner min={min} currentUser={currentUser} />
+      )}
+
+      {/* Сводка кто остался / кто выбыл после раунда */}
+      {game.status === 'live' && !min.round && min.history.length > 0 && (
+        <RoundSurvivorsBlock game={game} min={min} alive={alive} />
+      )}
+
       {game.status === 'finished' && (
         <FinishedView game={game} />
       )}
@@ -582,9 +592,9 @@ function MinorityAdminPanel({
   };
 
   // ---- закрытие раунда + расчёт ----
-  const closeRound = async () => {
+  const closeRoundCore = async (silent: boolean) => {
     if (!sb || !min.round) return;
-    if (!confirm('Закрыть раунд и подвести итоги?')) return;
+    if (!silent && !confirm('Закрыть раунд и подвести итоги?')) return;
     setBusy(true);
 
     const round = min.round;
@@ -655,6 +665,25 @@ function MinorityAdminPanel({
 
     setBusy(false);
   };
+
+  const closeRound = async () => closeRoundCore(false);
+  const closeRoundSilent = async () => closeRoundCore(true);
+
+  // Автозакрытие: если все живые проголосовали — закрываем раунд тихо.
+  // Любой клиент, заметивший 100% — попытается закрыть; повторные попытки
+  // отсекутся, потому что round обнулится сразу после первого update.
+  const round = min.round;
+  const aliveCount = (min.alive_ids ?? []).length;
+  const votedCount = round ? (min.alive_ids ?? []).filter(id => round.votes[id]).length : 0;
+  useEffect(() => {
+    if (!round || round.status !== 'open') return;
+    if (aliveCount === 0) return;
+    if (votedCount >= aliveCount) {
+      // Не ждём подтверждения, не показываем confirm.
+      closeRoundSilent();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [round?.number, votedCount, aliveCount]);
 
   // ---- объявить победителя ----
   const declareWinner = async (winnerId: string) => {
@@ -852,4 +881,70 @@ async function resolveSpectatorBets(game: SuperGame, min: MinorityState, winnerI
         `Выигрыш зрителя · ${game.title}`, `/super-games/${game.id}`);
     }
   }
+}
+
+
+function PersonalRoundResultBanner({ min, currentUser }: { min: MinorityState; currentUser: Participant }) {
+  const last = min.history[min.history.length - 1];
+  if (!last) return null;
+  const wasAlive = last.eliminated.includes(currentUser.id) ||
+    Object.keys(last.votes).includes(currentUser.id);
+  if (!wasAlive) return null;
+  const survived = !last.eliminated.includes(currentUser.id) &&
+    min.alive_ids.includes(currentUser.id);
+  if (survived) {
+    return (
+      <div className="glass-strong p-5 text-center border border-emerald-500/40 bg-emerald-500/5">
+        <div className="text-3xl">✓</div>
+        <div className="font-heading text-xl font-bold text-emerald-200 mt-1">Вы прошли в следующий раунд</div>
+        <div className="text-[11px] text-muted-foreground mt-1">Раунд {last.number} закрыт.</div>
+      </div>
+    );
+  }
+  return (
+    <div className="glass-strong p-5 text-center border border-red-500/40 bg-red-500/5">
+      <div className="text-3xl">✕</div>
+      <div className="font-heading text-xl font-bold text-red-300 mt-1">Вы выбыли из игры</div>
+      <div className="text-[11px] text-muted-foreground mt-1">Раунд {last.number}. Можете остаться зрителем.</div>
+    </div>
+  );
+}
+
+function RoundSurvivorsBlock({ game, min, alive }: { game: SuperGame; min: MinorityState; alive: Participant[] }) {
+  const { state } = useStore();
+  const last = min.history[min.history.length - 1];
+  if (!last) return null;
+  const eliminated = last.eliminated.map(id => state.participants.find(p => p.id === id)).filter(Boolean) as Participant[];
+  return (
+    <div className="glass p-4 space-y-3">
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-emerald-300/80 mb-1">
+          ✓ Прошли в следующий раунд · {alive.length}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+          {alive.map(p => (
+            <div key={p.id} className="flex items-center gap-1.5 p-1.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-xs">
+              <CharacterIcon participant={p} size="xs" ringless />
+              <span className="truncate">{p.display_name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {eliminated.length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-red-300/80 mb-1">
+            ✕ Выбыли в раунде {last.number} · {eliminated.length}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {eliminated.map(p => (
+              <div key={p.id} className="flex items-center gap-1.5 p-1.5 rounded-lg bg-red-500/5 border border-red-500/20 text-xs">
+                <CharacterIcon participant={p} size="xs" ringless />
+                <span className="truncate text-red-200/80">{p.display_name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

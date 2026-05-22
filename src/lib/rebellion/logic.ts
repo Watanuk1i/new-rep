@@ -2,7 +2,7 @@
 
 export type RebellionAction = 'rebellion' | 'betrayal' | 'neutral' | 'elite_deal';
 
-// Денежные константы по ТЗ
+// Денежные константы по ТЗ (обновлено под состав 11 игроков из patch_11)
 export const REBELLION_PERSONAL_COST = 100_000;
 export const REBELLION_FUND_GAIN    = 150_000;
 
@@ -12,18 +12,21 @@ export const BETRAYAL_FUND_DAMAGE  = 100_000;
 export const ELITE_DEAL_REWARD             = 250_000;
 export const ELITE_DEAL_SUCCESS_PENALTY    = 500_000;
 
-export const REBELLION_SUCCESS_GOAL = 3_000_000;
-export const TREASURY_DAMAGE_ON_SUCCESS = 3_000_000;
+// Снижено с 3M → 2M из-за уменьшенного состава.
+export const REBELLION_SUCCESS_GOAL = 2_000_000;
+export const TREASURY_DAMAGE_ON_SUCCESS = 2_000_000;
 
-export const LOYAL_REBEL_REWARD          = 300_000;
+// Награда лояльным бунтарям — снижена под меньший призовой пул.
+export const LOYAL_REBEL_REWARD          = 250_000;
 export const LOYAL_REBEL_MIN_CHOICES     = 3;
 export const BETRAYER_PENALTY_ON_SUCCESS = 300_000;
 export const BETRAYER_MIN_CHOICES_FOR_PENALTY = 2;
 export const REBEL_PENALTY_ON_FAILURE    = 300_000;
 
 export const TOTAL_ROUNDS = 5;
-export const MIN_PLAYERS = 6;
-export const MAX_PLAYERS = 12;
+// Минимум снижен — могут играть от 5 человек.
+export const MIN_PLAYERS = 5;
+export const MAX_PLAYERS = 11;
 
 export interface RoundResolution {
   /** Как изменился баланс игрока за раунд (через Казну). */
