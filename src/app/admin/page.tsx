@@ -537,6 +537,7 @@ function SuperGamesAdmin() {
       <RoyalRouletteCreator />
       <ContrabandCreator />
       <DebtTowerCreator />
+      <DebtAuctionCreator />
 
       <button onClick={() => setCreating(!creating)} className="btn-primary w-full">
         {creating ? '✕ Отмена' : '+ Создать Супер игру'}
@@ -1929,6 +1930,112 @@ function DebtTowerCreator() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// =====================================================================
+// АУКЦИОН ДОЛГОВ — создание Большой игры
+// =====================================================================
+// Куратор — Кредитор Элиты, взыскатель — Мондо (p-11), наблюдатель —
+// Селестия (p-queen). Лоты создаются прямо на странице игры из реальных
+// активных и просроченных долгов.
+
+function DebtAuctionCreator() {
+  const sb = getSupabase();
+  const [busy, setBusy] = useState(false);
+  const [activeDebtCount, setActiveDebtCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!sb) return;
+      const { count } = await sb.from('debts').select('id', { count: 'exact', head: true })
+        .in('status', ['active', 'overdue', 'requested']);
+      if (alive) setActiveDebtCount(count ?? 0);
+    })();
+    return () => { alive = false; };
+  }, [sb]);
+
+  const create = async () => {
+    if (!sb) return;
+    setBusy(true);
+    const sgId = uid('sg');
+    const initialState = {
+      curator_id: 'p-collector',
+      collector_id: 'p-11',
+      observer_id: 'p-queen',
+      lots: [],
+      current_lot_id: null,
+      mondo_markup_used: false,
+      creditor_loan_used: false,
+      celestia_treasury_hand_used: false,
+      status: 'preparing_lots',
+    };
+
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: 'Аукцион долгов',
+      type: 'debt_auction',
+      description: 'Долги становятся товаром. Можно купить чужой долг, спасти союзника или выкупить свой.',
+      rules:
+        'Куратор — Кредитор Элиты, взыскатель — Мондо, наблюдатель — Селестия.\n' +
+        'Ведущий выбирает активные и просроченные долги и создаёт из них лоты.\n' +
+        'Стартовая цена 50% от суммы долга, цена самовыкупа должником 70%, шаг ставки 50k.\n' +
+        'Победитель аукциона получает власть над долгом (становится новым владельцем). Должник, выкупивший сам себя, закрывает долг.\n' +
+        'Спецдействия (по 1 разу): Мондо — +20% к лоту до открытия; Кредитор — срочный заём ≤500k под 20%; Селестия — Казна перебивает ставку +100k и забирает лот.',
+      stakes: 'Платит только победитель лота. Самовыкуп — должник платит сразу.',
+      status: 'live',
+      participant_ids: [],
+      spectator_bets_enabled: false,
+      entry_fee: 0,
+      bank: 0,
+      state: initialState,
+    });
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'big_game_start',
+      title: 'Кредитор Элиты открывает «Аукцион долгов»',
+      body: `Активных долгов в системе: ${activeDebtCount ?? '?'}.`,
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+  };
+
+  const canStart = (activeDebtCount ?? 0) >= 3;
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">⚖️</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Большая игра</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            Аукцион долгов
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Активных долгов: {activeDebtCount === null ? '...' : activeDebtCount}
+            {!canStart && activeDebtCount !== null && ' · нужно минимум 3'}
+          </div>
+        </div>
+      </div>
+
+      <div className="text-[10px] text-muted leading-relaxed bg-white/5 rounded-lg px-3 py-2 border border-white/5">
+        Игра запустится сразу. Лоты добавляются прямо на странице из реальных активных/просроченных долгов.
+        Никаких взносов, никакого банка — деньги ходят между покупателями и владельцами долгов.
+      </div>
+
+      <button
+        className="btn-primary w-full"
+        onClick={create}
+        disabled={busy || !canStart}
+      >
+        {busy ? '...' : '⚖️ Создать Аукцион долгов'}
+      </button>
     </div>
   );
 }

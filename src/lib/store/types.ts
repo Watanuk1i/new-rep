@@ -83,7 +83,7 @@ export interface Debt {
   amount: number;
   description?: string | null;
   due_day: number;
-  status: 'requested' | 'active' | 'closed' | 'declined';
+  status: 'requested' | 'active' | 'closed' | 'declined' | 'overdue' | 'paid' | 'auctioned' | 'cancelled';
   initiator: 'debtor' | 'creditor';
   created_at: string;
 }
@@ -102,7 +102,7 @@ export interface SuperGame {
   entry_fee: number;
   bank: number;
   winner_id?: string | null;
-  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | DebtTowerState | Record<string, any>;
+  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | DebtTowerState | DebtAuctionState | Record<string, any>;
   created_at: string;
 }
 
@@ -325,6 +325,62 @@ export interface DebtTowerState {
     | 'cancelled';
   winner_id?: string | null;
   winner_is_candidate_for_elite?: boolean;
+}
+
+// ===== Аукцион долгов (7-я Большая игра) =====
+export type DebtAuctionLotStatus =
+  | 'pending'
+  | 'open'
+  | 'closed'
+  | 'sold'
+  | 'bought_by_debtor'
+  | 'cancelled'
+  | 'returned';
+
+export interface DebtAuctionBid {
+  id: string;
+  bidder_id: string;
+  amount: number;
+  created_at: string;
+}
+
+export interface DebtAuctionLot {
+  id: string;
+  debt_id: string;
+  debtor_id: string;
+  current_owner_id: string;
+  collector_id?: string | null;
+  debt_amount: number;
+  start_price: number;
+  buyout_for_debtor: number;
+  current_bid: number;
+  current_bidder_id?: string | null;
+  bids: DebtAuctionBid[];
+  status: DebtAuctionLotStatus;
+  /** Суффикс «применён» для разовой надбавки Мондо. */
+  mondo_markup_applied: boolean;
+  opened_at?: string;
+  closed_at?: string;
+}
+
+export interface DebtAuctionState {
+  curator_id: string;          // 'p-collector' (Кредитор Элиты) или назначенный
+  collector_id: string;        // Мондо = 'p-11'
+  observer_id: string;         // Селестия = 'p-queen'
+  lots: DebtAuctionLot[];
+  current_lot_id?: string | null;
+  mondo_markup_used: boolean;
+  creditor_loan_used: boolean;
+  celestia_treasury_hand_used: boolean;
+  status:
+    | 'scheduled'
+    | 'preparing_lots'
+    | 'active'
+    | 'lot_open'
+    | 'bidding'
+    | 'lot_closed'
+    | 'finished'
+    | 'cancelled';
 }
 
 export interface AcademyEvent {
