@@ -34,15 +34,22 @@ const GAME_TYPES = [
 ];
 
 export default function SuperGamesPage() {
-  const { state, role } = useStore();
-  const [tab, setTab] = useState<'upcoming' | 'live' | 'archive'>('upcoming');
+  const { state, role, currentUser } = useStore();
+  const [tab, setTab] = useState<'mine' | 'upcoming' | 'live' | 'archive' | 'catalog'>('upcoming');
   const [selectedType, setSelectedType] = useState<string | null>(null);
-  const isAdmin = role === 'gm' || role === 'queen' || role === 'collector';
+  const isGm = role === 'gm';
+  const myId = currentUser?.id ?? null;
+
+  const myGames = state.superGames.filter(g =>
+    !!myId && (g.participant_ids ?? []).includes(myId) &&
+    g.status !== 'finished' && g.status !== 'cancelled');
 
   const filtered = state.superGames.filter(g => {
     if (tab === 'upcoming') return g.status === 'scheduled';
     if (tab === 'live') return g.status === 'live';
-    return g.status === 'finished' || g.status === 'cancelled';
+    if (tab === 'archive') return g.status === 'finished' || g.status === 'cancelled';
+    if (tab === 'mine') return myGames.some(x => x.id === g.id);
+    return false;
   });
 
   return (
@@ -53,16 +60,18 @@ export default function SuperGamesPage() {
         <p className="text-xs text-muted-foreground mt-1">События, за которыми наблюдает вся академия.</p>
       </div>
 
-      {isAdmin && (
+      {isGm && (
         <Link href="/admin?tab=super-games" className="btn-primary w-full text-sm">⚙️ Создать супер игру</Link>
       )}
 
       <div className="scroll-x">
-        {[
+        {([
+          ...(myGames.length > 0 ? [{ key: 'mine', label: `Вы участвуете · ${myGames.length}`, icon: '🎯' }] : []),
           { key: 'upcoming', label: 'Скоро', icon: '📅' },
           { key: 'live', label: 'В эфире', icon: '🔴' },
           { key: 'archive', label: 'Архив', icon: '📜' },
-        ].map(t => (
+          ...(isGm ? [{ key: 'catalog', label: 'Типы (GM)', icon: '📚' }] : []),
+        ] as const).map(t => (
           <button key={t.key} onClick={() => setTab(t.key as any)}
             className={cn('tab-pill', tab === t.key ? 'tab-pill-active' : 'tab-pill-inactive')}>
             <span>{t.icon}</span><span>{t.label}</span>
@@ -118,9 +127,10 @@ export default function SuperGamesPage() {
         })}
       </div>
 
-      {/* Типы игр */}
+      {/* Типы игр (показываем только в табе catalog ведущему) */}
+      {tab === 'catalog' && isGm && (
       <section>
-        <div className="divider-ornate my-3">✦ Типы Больших Игр ✦</div>
+        <div className="divider-ornate my-3">✦ Типы Больших Игр (GM) ✦</div>
         <div className="grid grid-cols-2 gap-2">
           {GAME_TYPES.map(gt => (
             <button key={gt.type} onClick={() => setSelectedType(gt.type)}
@@ -138,6 +148,7 @@ export default function SuperGamesPage() {
           ))}
         </div>
       </section>
+      )}
 
       {selectedType && (
         <div className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center p-3">

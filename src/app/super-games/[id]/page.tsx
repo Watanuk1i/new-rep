@@ -52,23 +52,12 @@ export default function SuperGameDetailPage() {
 
       {/* Описание / правила / ставки */}
       {game.description && (
-        <div className="glass p-4">
-          <div className="section-title text-sm mb-2">📖 Описание</div>
-          <p className="text-sm text-muted-foreground whitespace-pre-line">{game.description}</p>
-        </div>
+        <CollapsibleBlock title="📖 Описание" content={game.description} />
       )}
       {game.rules && (
-        <div className="glass p-4">
-          <div className="section-title text-sm mb-2">📋 Правила</div>
-          <p className="text-sm whitespace-pre-line text-muted-foreground">{game.rules}</p>
-        </div>
+        <CollapsibleBlock title="📋 Правила" content={game.rules} />
       )}
-      {game.stakes && (
-        <div className="glass-strong gold-border p-4">
-          <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-1">⚠️ Ставки</div>
-          <p className="text-sm">{game.stakes}</p>
-        </div>
-      )}
+      {/* Поле stakes больше не выводим: дублировало правила и мешало UX. */}
 
       {/* Участники */}
       <ParticipantsBlock game={game} isAdmin={isAdmin} />
@@ -286,5 +275,27 @@ function ForceCloseBlock({ game }: { game: any }) {
         Используйте если игра «зависла» в одной из фаз. Состояние записывается, реалтайм пробрасывается всем клиентам.
       </div>
     </div>
+  );
+}
+
+
+function CollapsibleBlock({ title, content }: { title: string; content: string }) {
+  const isLong = content.length > 220 || content.split('\n').length > 4;
+  if (!isLong) {
+    return (
+      <div className="glass p-4">
+        <div className="section-title text-sm mb-2">{title}</div>
+        <p className="text-sm text-muted-foreground whitespace-pre-line">{content}</p>
+      </div>
+    );
+  }
+  return (
+    <details className="glass p-4 group">
+      <summary className="cursor-pointer flex items-center justify-between gap-2 list-none">
+        <span className="section-title text-sm">{title}</span>
+        <span className="text-[10px] text-gold/80 group-open:rotate-180 transition-transform">▾</span>
+      </summary>
+      <p className="text-sm text-muted-foreground whitespace-pre-line mt-2">{content}</p>
+    </details>
   );
 }

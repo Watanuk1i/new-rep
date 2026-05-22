@@ -199,6 +199,11 @@ function RoundView({
               </div>
             </div>
           </div>
+          {round.question && (
+            <div className="mt-3 p-3 rounded-xl bg-card/40 border border-red-500/20 text-sm text-red-200 italic">
+              «{round.question}»
+            </div>
+          )}
         </div>
       )}
 
@@ -488,7 +493,18 @@ function MinorityAdminPanel({
   const { state } = useStore();
   const sb = getSupabase();
   const [duration, setDuration] = useState(600);
+  const [pendingAskerId, setPendingAskerId] = useState<string | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const pickAsker = (id: string) => setPendingAskerId(id);
+
+  const openRoundWithAsker = async () => {
+    if (!pendingAskerId) return;
+    await startRound(pendingAskerId, pendingQuestion.trim() || null);
+    setPendingAskerId(null);
+    setPendingQuestion('');
+  };
 
   // ---- старт игры ----
   const startGame = async () => {
@@ -540,7 +556,7 @@ function MinorityAdminPanel({
   };
 
   // ---- открытие нового раунда ----
-  const startRound = async (askedId: string) => {
+  const startRound = async (askedId: string, question?: string | null) => {
     if (!sb) return;
     const number = (min.history?.length || 0) + 1;
     const round: MinorityRound = {
@@ -550,6 +566,7 @@ function MinorityAdminPanel({
       duration_sec: duration,
       votes: {},
       status: 'open',
+      question: question ?? null,
     };
     await sb.from('super_games').update({
       state: { ...min, round },
@@ -716,24 +733,39 @@ function MinorityAdminPanel({
                 </button>
               ))}
             </div>
-            <input type="number" value={duration} min={60} step={30}
-              onChange={e => setDuration(Math.max(60, Number(e.target.value)))}
-              className="input-field font-mono text-sm" />
           </div>
-          <button onClick={pickRandomAlive} className="btn-primary w-full">
-            🎲 Случайный участник + открыть раунд
-          </button>
-          <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground py-1">…или выбрать вручную</summary>
-            <div className="grid grid-cols-2 gap-1 mt-1">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
+              Кто задаёт вопрос
+            </label>
+            <div className="grid grid-cols-2 gap-1">
               {alive.map(p => (
-                <button key={p.id} onClick={() => startRound(p.id)}
-                  className="px-2 py-2 text-xs rounded-lg bg-card/40 border border-white/8 text-left active:bg-white/5">
-                  {p.display_name}
+                <button key={p.id} onClick={() => pickAsker(p.id)}
+                  className={cn('flex items-center gap-1.5 px-2 py-2 rounded-lg border text-xs text-left',
+                    pendingAskerId === p.id ? 'bg-gold/15 border-gold/50 text-gold' : 'bg-card/40 border-white/8')}>
+                  <CharacterIcon participant={p} size="xs" ringless />
+                  <span className="truncate">{p.display_name}</span>
                 </button>
               ))}
             </div>
-          </details>
+            <button onClick={() => pickAsker(alive[Math.floor(Math.random() * alive.length)].id)}
+              className="text-[10px] text-gold/80 mt-1">🎲 Случайно</button>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
+              Текст вопроса (видно всем во время таймера)
+            </label>
+            <textarea
+              value={pendingQuestion}
+              onChange={e => setPendingQuestion(e.target.value)}
+              placeholder="«Вы хотя бы раз бросали человека в опасности?»"
+              rows={2}
+              className="input-field text-sm resize-none"
+            />
+          </div>
+          <button onClick={openRoundWithAsker} disabled={!pendingAskerId} className="btn-primary w-full">
+            ▶ Открыть раунд {pendingAskerId ? '' : '(выберите игрока)'}
+          </button>
         </>
       )}
 

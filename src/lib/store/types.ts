@@ -113,7 +113,9 @@ export interface MinorityRound {
   started_at: string;
   duration_sec: number;
   votes: Record<string, 'yes' | 'no'>;
-  status: 'open' | 'closed';
+  status: 'pending_open' | 'open' | 'closed';
+  /** Текст вопроса, который задал ведущий/выбранный игрок (показывается в таймере). */
+  question?: string | null;
 }
 export interface MinorityHistoryEntry {
   number: number;

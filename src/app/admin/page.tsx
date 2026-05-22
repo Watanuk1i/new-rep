@@ -719,6 +719,126 @@ function TreasuryTab() {
           </div>
         )}
       </div>
+
+      <ResetEconomySection />
+    </div>
+  );
+}
+
+function ResetEconomySection() {
+  const sb = getSupabase();
+  const [busy, setBusy] = useState(false);
+  const [opts, setOpts] = useState({
+    balances: true,
+    debts: true,
+    games: true,
+    history: false,
+    events: false,
+  });
+
+  const run = async () => {
+    if (!sb) return;
+    if (!confirm('СБРОС ЭКОНОМИКИ — это необратимо. Продолжить?')) return;
+    if (!confirm('Точно? После сброса вы НЕ восстановите долги/банки/балансы.')) return;
+    setBusy(true);
+    try {
+      if (opts.balances) {
+        // Возвращаем стартовые балансы по статусам
+        const map: Record<string, number> = {
+          gm: 999_999_999,
+          treasury: 15_000_000, // под 11 игроков
+          queen: 5_000_000,
+          elite: 3_000_000,
+          collector: 3_000_000,
+          master: 2_000_000,
+          player: 1_000_000,
+          pet: 100_000,
+        };
+        const { data: parts } = await sb.from('participants').select('id, status');
+        for (const p of parts ?? []) {
+          const target = map[p.status] ?? 1_000_000;
+          await sb.from('participants').update({ balance: target }).eq('id', p.id);
+        }
+        // Особые системные аккаунты
+        await sb.from('participants').update({ balance: 8_000_000 }).eq('id', 'p-togami-fund');
+      }
+      if (opts.debts) {
+        await sb.from('debts').delete().neq('id', '');
+      }
+      if (opts.games) {
+        await sb.from('super_games').delete().neq('id', '');
+        await sb.from('challenges').delete().neq('id', '');
+        await sb.from('pari').delete().neq('id', '');
+        // Card Ship V2
+        await sb.from('card_ship_listings').delete().neq('id', '');
+        await sb.from('card_ship_duels').delete().neq('id', '');
+        await sb.from('card_ship_states').delete().neq('id', '');
+        await sb.from('card_ship_games').delete().neq('id', '');
+        // Сброс счёта побед/поражений
+        await sb.from('participants').update({ wins: 0, losses: 0 }).neq('id', '');
+      }
+      if (opts.history) {
+        await sb.from('history').delete().neq('id', '');
+      }
+      if (opts.events) {
+        await sb.from('events').delete().neq('id', '');
+      }
+      // Запись о сбросе
+      await sb.from('events').insert({
+        id: 'ev-reset-' + Date.now(),
+        type: 'gm_alert',
+        title: 'Ведущий выполнил сброс экономики',
+        body: `Сброшено: ${[
+          opts.balances && 'балансы',
+          opts.debts && 'долги',
+          opts.games && 'игры/пари/вызовы',
+          opts.history && 'история',
+          opts.events && 'события',
+        ].filter(Boolean).join(', ')}.`,
+        is_for_gm_only: false,
+      });
+      alert('Сброс выполнен.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="glass-strong p-4 border border-red-500/40 bg-red-500/5 space-y-2">
+      <div className="text-[10px] uppercase tracking-widest text-red-300/80">⚠ Опасная зона</div>
+      <div className="text-sm font-bold">Сброс экономики</div>
+      <p className="text-[11px] text-muted-foreground">
+        Возвращает балансы к стартовым (по статусу), удаляет активные игры/долги/пари. Сама БД и
+        учётки игроков не сбрасываются — для этого есть отдельный SQL-файл setup.sql.
+      </p>
+
+      <div className="space-y-1">
+        {([
+          ['balances', 'Балансы (вернуть стартовые)'],
+          ['debts',    'Долги (удалить все)'],
+          ['games',    'Активные игры, пари, вызовы (удалить)'],
+          ['history',  'История операций (удалить — необратимо)'],
+          ['events',   'Лента событий (удалить)'],
+        ] as const).map(([key, label]) => (
+          <label key={key} className="flex items-center gap-2 text-xs cursor-pointer p-1.5 rounded-lg active:bg-white/5">
+            <input
+              type="checkbox"
+              checked={opts[key]}
+              onChange={e => setOpts(s => ({ ...s, [key]: e.target.checked }))}
+              className="w-4 h-4 accent-red-400"
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+
+      <button
+        onClick={run}
+        disabled={busy}
+        className="btn-danger w-full text-xs"
+      >
+        {busy ? 'Сброс...' : '🛑 Сбросить выбранное'}
+      </button>
     </div>
   );
 }
@@ -1096,50 +1216,137 @@ function AccountsTab() {
       )}
 
       <div className="space-y-2">
-        {list.map(p => {
-          const login = loginFor(p);
-          const password = p.password ?? '';
-          const hasPassword = !!p.password;
-          return (
-            <div key={p.id} className="glass p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <CharacterIcon participant={p} size="sm" ringless={p.status === 'queen' || p.status === 'gm'} />
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold text-sm truncate">{p.display_name}</div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {getStatusLabel(p.status)} · {p.id}
-                    {p.is_registered && <span className="ml-1 text-emerald-300">· занят</span>}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-[64px_1fr_auto] items-center gap-2 text-xs">
-                <div className="text-[10px] uppercase tracking-widest text-muted">Логин</div>
-                <div className="font-mono text-gold truncate">{login}</div>
-                <button onClick={() => copy(login, `${p.id}-l`)}
-                  className="text-[10px] px-2 py-1 rounded-md bg-card/60 border border-white/8 active:bg-white/5">
-                  {copied === `${p.id}-l` ? '✓' : '⧉'}
-                </button>
-              </div>
-
-              <div className="grid grid-cols-[64px_1fr_auto] items-center gap-2 text-xs">
-                <div className="text-[10px] uppercase tracking-widest text-muted">Пароль</div>
-                <div className="font-mono truncate">
-                  {hasPassword
-                    ? (revealed ? <span className="text-gold">{password}</span> : <span className="text-muted">••••••••</span>)
-                    : <span className="text-muted-foreground italic">любой (NULL)</span>}
-                </div>
-                {hasPassword && (
-                  <button onClick={() => copy(password, `${p.id}-p`)}
-                    className="text-[10px] px-2 py-1 rounded-md bg-card/60 border border-white/8 active:bg-white/5">
-                    {copied === `${p.id}-p` ? '✓' : '⧉'}
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {list.map(p => (
+          <AccountRow key={p.id} participant={p} loginFor={loginFor}
+            revealed={revealed} copy={copy} copied={copied} />
+        ))}
       </div>
+    </div>
+  );
+}
+
+function AccountRow({
+  participant: p, loginFor, revealed, copy, copied,
+}: {
+  participant: Participant;
+  loginFor: (p: Participant) => string;
+  revealed: boolean;
+  copy: (text: string, key: string) => void;
+  copied: string | null;
+}) {
+  const sb = getSupabase();
+  const [editing, setEditing] = useState(false);
+  const [newName, setNewName] = useState(p.display_name);
+  const [newPassword, setNewPassword] = useState(p.password ?? '');
+
+  const login = loginFor(p);
+  const password = p.password ?? '';
+  const hasPassword = !!p.password;
+
+  const save = async () => {
+    if (!sb) return;
+    const update: any = {};
+    if (newName !== p.display_name) update.display_name = newName.trim();
+    if (newPassword !== (p.password ?? '')) update.password = newPassword === '' ? null : newPassword;
+    if (Object.keys(update).length === 0) {
+      setEditing(false);
+      return;
+    }
+    const { error } = await sb.from('participants').update(update).eq('id', p.id);
+    if (error) {
+      alert('Ошибка: ' + error.message);
+      return;
+    }
+    setEditing(false);
+  };
+
+  const reset = async () => {
+    if (!sb) return;
+    if (!confirm(`Освободить персонажа ${p.display_name}? Это сбросит логин/пароль и пометит как незанятого. Игрок сможет заново зарегистрироваться.`)) return;
+    // Возвращаем оригинальное имя если оно было перезаписано? Нельзя узнать оригинал.
+    // Просто чистим password и is_registered.
+    await sb.from('participants').update({
+      password: null,
+      is_registered: false,
+    }).eq('id', p.id);
+  };
+
+  return (
+    <div className="glass p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <CharacterIcon participant={p} size="sm" ringless={p.status === 'queen' || p.status === 'gm'} />
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-sm truncate">{p.display_name}</div>
+          <div className="text-[10px] text-muted-foreground">
+            {getStatusLabel(p.status)} · {p.id}
+            {p.is_registered && <span className="ml-1 text-emerald-300">· занят</span>}
+          </div>
+        </div>
+        <button
+          onClick={() => setEditing(v => !v)}
+          className="text-[10px] px-2 py-1 rounded-md bg-card/60 border border-white/8 active:bg-white/5"
+        >{editing ? '✕ Отмена' : '✎ Изменить'}</button>
+      </div>
+
+      {!editing ? (
+        <>
+          <div className="grid grid-cols-[64px_1fr_auto] items-center gap-2 text-xs">
+            <div className="text-[10px] uppercase tracking-widest text-muted">Логин</div>
+            <div className="font-mono text-gold truncate">{login}</div>
+            <button onClick={() => copy(login, `${p.id}-l`)}
+              className="text-[10px] px-2 py-1 rounded-md bg-card/60 border border-white/8 active:bg-white/5">
+              {copied === `${p.id}-l` ? '✓' : '⧉'}
+            </button>
+          </div>
+          <div className="grid grid-cols-[64px_1fr_auto] items-center gap-2 text-xs">
+            <div className="text-[10px] uppercase tracking-widest text-muted">Пароль</div>
+            <div className="font-mono truncate">
+              {hasPassword
+                ? (revealed ? <span className="text-gold">{password}</span> : <span className="text-muted">••••••••</span>)
+                : <span className="text-muted-foreground italic">любой (NULL)</span>}
+            </div>
+            {hasPassword && (
+              <button onClick={() => copy(password, `${p.id}-p`)}
+                className="text-[10px] px-2 py-1 rounded-md bg-card/60 border border-white/8 active:bg-white/5">
+                {copied === `${p.id}-p` ? '✓' : '⧉'}
+              </button>
+            )}
+          </div>
+          {p.is_registered && p.id !== 'p-gm' && p.id !== 'p-queen' && (
+            <button onClick={reset}
+              className="text-[10px] w-full text-amber-300/80 px-2 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/30 active:bg-amber-500/20">
+              ↻ Освободить персонажа (сбросить логин/пароль)
+            </button>
+          )}
+        </>
+      ) : (
+        <div className="space-y-2">
+          <label className="block text-[10px] text-muted">
+            Логин (имя персонажа)
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              className="input-field text-sm font-mono mt-0.5"
+              disabled={p.id === 'p-gm' || p.id === 'p-queen'}
+            />
+            {(p.id === 'p-gm' || p.id === 'p-queen') && (
+              <span className="block text-[10px] text-muted-foreground mt-0.5">
+                Имя GM/Селестии менять нельзя — это специальный логин (host/queen).
+              </span>
+            )}
+          </label>
+          <label className="block text-[10px] text-muted">
+            Пароль (пусто = любой)
+            <input
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              className="input-field text-sm font-mono mt-0.5"
+              type="text"
+            />
+          </label>
+          <button onClick={save} className="btn-primary w-full text-xs">💾 Сохранить</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2535,6 +2742,21 @@ function MiniGamesCreator() {
       link_url: `/super-games/${sgId}`,
       is_for_gm_only: false,
     });
+
+    // Уведомления приглашённым
+    if (finalIds.length > 0) {
+      await sb.from('notifications').insert(
+        finalIds.map((pid: string) => ({
+          id: uid('n'),
+          recipient_id: pid,
+          type: 'mini_game_invite',
+          title: `Малая игра: ${meta.label}`,
+          body: `Вас пригласили. Ставка: ${stake.toLocaleString('ru-RU')} ¥.`,
+          link_url: `/super-games/${sgId}`,
+          is_read: false,
+        })),
+      );
+    }
 
     setBusy(false);
     setOpen(false);

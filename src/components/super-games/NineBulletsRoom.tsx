@@ -1107,14 +1107,8 @@ function AdminPanel({
       )}
 
       {nb.status === 'role_selection' && round && (
-        <div className="grid grid-cols-2 gap-2">
-          <button onClick={rerollRoles} disabled={busy} className="btn-secondary text-xs">
-            🎲 Перевыбрать роли
-          </button>
-          <button onClick={toLoading} disabled={busy} className="btn-primary text-xs">
-            🔫 К зарядке →
-          </button>
-        </div>
+        <RolePickerAdmin game={game} nb={nb} round={round}
+          onReroll={rerollRoles} onContinue={toLoading} busy={busy} />
       )}
 
       {nb.status === 'loading' && round && (
@@ -1164,6 +1158,136 @@ function AdminPanel({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+
+function RolePickerAdmin({
+  game, nb, round, onReroll, onContinue, busy,
+}: {
+  game: SuperGame; nb: NineBulletsState; round: NineBulletsRound;
+  onReroll: () => void; onContinue: () => void; busy: boolean;
+}) {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const participants = (game.participant_ids || [])
+    .map((pid: string) => state.participants.find(p => p.id === pid))
+    .filter(Boolean) as Participant[];
+
+  const setLoader = async (id: string) => {
+    if (!sb) return;
+    if (id === round.shooter_id) { alert('Стрелок не может быть Заряжающим.'); return; }
+    const newRounds = [...nb.rounds];
+    const remaining = participants.map(p => p.id).filter(x => x !== id && x !== round.shooter_id);
+    const sitters = remaining.slice(0, 5);
+    newRounds[nb.current_round - 1] = { ...round, loader_id: id, sitters_ids: sitters };
+    await sb.from('super_games').update({ state: { ...nb, rounds: newRounds } }).eq('id', game.id);
+  };
+  const setShooter = async (id: string) => {
+    if (!sb) return;
+    if (id === round.loader_id) { alert('Заряжающий не может быть Стрелком.'); return; }
+    const newRounds = [...nb.rounds];
+    const remaining = participants.map(p => p.id).filter(x => x !== round.loader_id && x !== id);
+    const sitters = remaining.slice(0, 5);
+    newRounds[nb.current_round - 1] = { ...round, shooter_id: id, sitters_ids: sitters };
+    await sb.from('super_games').update({ state: { ...nb, rounds: newRounds } }).eq('id', game.id);
+  };
+  const toggleSitter = async (id: string) => {
+    if (!sb) return;
+    if (id === round.loader_id || id === round.shooter_id) return;
+    const cur = new Set(round.sitters_ids);
+    if (cur.has(id)) cur.delete(id);
+    else if (cur.size < 5) cur.add(id);
+    else return;
+    const newRounds = [...nb.rounds];
+    newRounds[nb.current_round - 1] = { ...round, sitters_ids: Array.from(cur) };
+    await sb.from('super_games').update({ state: { ...nb, rounds: newRounds } }).eq('id', game.id);
+  };
+
+  const sittersOk = round.sitters_ids.length === 5;
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] text-muted-foreground">
+        Назначь роли вручную или жми «Случайно».
+      </div>
+
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-amber-300/80 mb-1">🔫 Заряжающий</div>
+        <div className="grid grid-cols-2 gap-1">
+          {participants.map(p => (
+            <button key={p.id}
+              onClick={() => setLoader(p.id)}
+              className={cn(
+                'flex items-center gap-1.5 p-1.5 rounded-lg border text-xs text-left',
+                round.loader_id === p.id ? 'bg-amber-500/15 border-amber-500/50 text-amber-200' :
+                p.id === round.shooter_id ? 'bg-card/30 border-white/5 opacity-40' :
+                'bg-card/40 border-white/8',
+              )}
+            >
+              <CharacterIcon participant={p} size="xs" ringless />
+              <span className="truncate">{p.display_name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-red-300/80 mb-1">🎯 Стрелок</div>
+        <div className="grid grid-cols-2 gap-1">
+          {participants.map(p => (
+            <button key={p.id}
+              onClick={() => setShooter(p.id)}
+              className={cn(
+                'flex items-center gap-1.5 p-1.5 rounded-lg border text-xs text-left',
+                round.shooter_id === p.id ? 'bg-red-500/15 border-red-500/50 text-red-200' :
+                p.id === round.loader_id ? 'bg-card/30 border-white/5 opacity-40' :
+                'bg-card/40 border-white/8',
+              )}
+            >
+              <CharacterIcon participant={p} size="xs" ringless />
+              <span className="truncate">{p.display_name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-emerald-300/80 mb-1">
+          🪑 Сидящие · {round.sitters_ids.length}/5
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          {participants.map(p => {
+            const isSitter = round.sitters_ids.includes(p.id);
+            const isOther = p.id === round.loader_id || p.id === round.shooter_id;
+            return (
+              <button key={p.id}
+                onClick={() => toggleSitter(p.id)}
+                disabled={isOther}
+                className={cn(
+                  'flex items-center gap-1.5 p-1.5 rounded-lg border text-xs text-left',
+                  isSitter ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200' :
+                  isOther ? 'bg-card/30 border-white/5 opacity-30 cursor-not-allowed' :
+                  'bg-card/40 border-white/8',
+                )}
+              >
+                <CharacterIcon participant={p} size="xs" ringless />
+                <span className="truncate">{p.display_name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 pt-1">
+        <button onClick={onReroll} disabled={busy} className="btn-secondary text-xs">
+          🎲 Случайно
+        </button>
+        <button onClick={onContinue} disabled={busy || !sittersOk} className="btn-primary text-xs">
+          🔫 К зарядке →
+        </button>
+      </div>
     </div>
   );
 }
