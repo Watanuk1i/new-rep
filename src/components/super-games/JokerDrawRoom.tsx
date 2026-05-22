@@ -18,7 +18,7 @@ import { chargeToTreasury, payoutFromTreasury } from '@/lib/store/tx';
 import {
   freshDeck, jokerChance, riskLevel, drawFromDeck, nextActiveIndex,
   applyTreasuryFee, splitPayout,
-  SKIP_TURN_COST, HINT_COST, NORMAL_CARDS_START, JOKERS_START,
+  SKIP_TURN_COST, HINT_COST, PASS_TURN_COST, NORMAL_CARDS_START, JOKERS_START,
 } from '@/lib/jokerdraw/logic';
 import type {
   SuperGame, Participant, JokerDrawState, JokerDrawAction, JokerDrawCard,
@@ -40,6 +40,7 @@ function getState(g: SuperGame): JokerDrawState {
     eliminated_ids: s.eliminated_ids ?? [],
     skip_used_ids: s.skip_used_ids ?? [],
     hint_uses: s.hint_uses ?? {},
+    hint_revealed_top: s.hint_revealed_top ?? {},
     pending_pass_from: s.pending_pass_from ?? null,
     pending_pass_to: s.pending_pass_to ?? null,
     actions: s.actions ?? [],
@@ -132,23 +133,27 @@ export function JokerDrawRoom({ game }: { game: SuperGame }) {
             eliminated={eliminatedSet} skipUsed={new Set(j.skip_used_ids)}
           />
 
-          {/* Pending pass: получатель видит запрос */}
-          {j.pending_pass_to && currentUser && currentUser.id === j.pending_pass_to && (
-            <PassPrompt
-              game={game} from={players.find(p => p.id === j.pending_pass_from) ?? null}
-              currentUserId={currentUser.id}
-            />
-          )}
-
           {/* Кнопки текущего игрока */}
-          {isMyTurn && !j.pending_pass_to && (
+          {isMyTurn && (
             <CurrentPlayerActions
               game={game} j={j} currentUserId={currentUser!.id}
               activePlayers={activePlayers.filter(p => p.id !== currentUser!.id)}
             />
           )}
 
-          {!isMyTurn && currentPlayer && !j.pending_pass_to && (
+          {/* Подсказка: показать купившему игроку, какая верхняя карта (один раз до следующего тяга) */}
+          {currentUser && j.hint_revealed_top && j.hint_revealed_top[currentUser.id] && (
+            <div className="glass p-3 border border-amber-400/40 bg-amber-400/10 text-center">
+              <div className="text-[10px] uppercase tracking-widest text-amber-300">Ваша подсказка</div>
+              <div className="text-sm mt-1">
+                Верхняя карта: {j.hint_revealed_top[currentUser.id] === 'joker'
+                  ? <span className="text-red-300 font-bold">🃏 ДЖОКЕР — не тяните!</span>
+                  : <span className="text-emerald-300 font-bold">🂠 безопасная</span>}
+              </div>
+            </div>
+          )}
+
+          {!isMyTurn && currentPlayer && (
             <div className="text-[11px] text-muted-foreground italic text-center">
               Сейчас ход: <b>{currentPlayer.display_name}</b>
             </div>
@@ -171,8 +176,8 @@ export function JokerDrawRoom({ game }: { game: SuperGame }) {
 function Header({ game, j }: { game: SuperGame; j: JokerDrawState }) {
   const modeLabel: Record<JokerDrawMode, string> = {
     quick: '⚡ Быстрый',
-    long: '🌀 Долгий',
-    advanced: '♟️ Расширенный',
+    long: '🌀 Без бонусов',
+    advanced: '♟️ С бонусами',
   };
   return (
     <div className="glass-strong gold-border p-4">
@@ -260,7 +265,7 @@ function CurrentPlayerActions({
   activePlayers: Participant[];
 }) {
   const skipUsed = j.skip_used_ids.includes(currentUserId);
-  const canPass = j.mode === 'advanced' && activePlayers.length > 0;
+  const hintUsed = (j.hint_uses?.[currentUserId] ?? 0) > 0;
 
   if (j.mode === 'advanced') {
     return (
@@ -277,11 +282,16 @@ function CurrentPlayerActions({
           >⏭ Пропустить · {(SKIP_TURN_COST / 1000)}K</button>
           <button
             className="btn-secondary text-[10px]"
+            disabled={hintUsed}
             onClick={() => doHint(game, currentUserId)}
           >💡 Подсказка · {(HINT_COST / 1000)}K</button>
           <PassMenu game={game} from={currentUserId} active={activePlayers} />
         </div>
-        {skipUsed && <div className="text-[10px] text-muted-foreground text-center">Пропуск уже использован</div>}
+        <div className="text-[10px] text-muted-foreground text-center">
+          {skipUsed && 'Пропуск использован · '}
+          {hintUsed && 'Подсказка использована · '}
+          Передача хода {(PASS_TURN_COST / 1000)}K (моментально, без подтверждения).
+        </div>
       </div>
     );
   }
@@ -299,19 +309,22 @@ function PassMenu({ game, from, active }: { game: SuperGame; from: string; activ
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button className="btn-secondary text-[10px]" onClick={() => setOpen(true)}>↪ Передать ход</button>
+      <button className="btn-secondary text-[10px]" onClick={() => setOpen(true)}>↪ Передать ход · {(PASS_TURN_COST / 1000)}K</button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3">
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
           <div className="relative glass-strong w-full max-w-md p-4 rounded-2xl space-y-2">
             <div className="text-sm font-bold">Кому передать ход?</div>
+            <div className="text-[11px] text-muted-foreground">
+              Списывается {(PASS_TURN_COST / 1000)}K. Выбранный игрок ходит сразу.
+            </div>
             <div className="space-y-1 max-h-64 overflow-y-auto">
               {active.map(p => (
                 <button
                   key={p.id}
                   className="w-full flex items-center gap-2 p-2 rounded-xl bg-card/40 active:bg-white/5 text-left"
                   onClick={() => {
-                    requestPass(game, from, p.id);
+                    forcePass(game, from, p.id);
                     setOpen(false);
                   }}
                 >
@@ -325,22 +338,6 @@ function PassMenu({ game, from, active }: { game: SuperGame; from: string; activ
         </div>
       )}
     </>
-  );
-}
-
-function PassPrompt({
-  game, from, currentUserId,
-}: { game: SuperGame; from: Participant | null; currentUserId: string }) {
-  return (
-    <div className="glass p-3 border border-amber-500/40 bg-amber-500/5 space-y-2">
-      <div className="text-[11px]">
-        <b>{from?.display_name ?? '???'}</b> передаёт вам свой ход. Если согласитесь — карту тянете вы.
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <button className="btn-success text-xs" onClick={() => acceptPass(game, currentUserId)}>Принять</button>
-        <button className="btn-danger text-xs" onClick={() => declinePass(game, currentUserId)}>Отказаться</button>
-      </div>
-    </div>
   );
 }
 
@@ -368,10 +365,10 @@ function ActionsLog({ actions, players }: { actions: JokerDrawAction[]; players:
                   </>
                 )}
                 {a.action_type === 'skip' && <>пропустил ход</>}
-                {a.action_type === 'hint' && <>купил подсказку ({a.risk_percent?.toFixed(1)}%)</>}
-                {a.action_type === 'pass_request' && <>предлагает ход {t?.display_name}</>}
-                {a.action_type === 'pass_accept' && <>принимает передачу хода</>}
-                {a.action_type === 'pass_decline' && <>отказался от передачи</>}
+                {a.action_type === 'hint' && (
+                  <>купил подсказку (топ: {a.card_result === 'joker' ? '🃏 джокер' : '🂠 безопасная'})</>
+                )}
+                {a.action_type === 'pass_request' && <>передал ход {t?.display_name} (платно)</>}
               </span>
             </div>
           );
@@ -550,6 +547,10 @@ async function doDraw(game: SuperGame, playerId: string) {
     eliminated_ids: newEliminated,
     current_idx: nextIdx,
     pending_pass_from: null, pending_pass_to: null,
+    // Сбрасываем подсказку для тянувшего; при выбывании (новая колода) — сбрасываем всем
+    hint_revealed_top: didEliminate
+      ? {}
+      : { ...(cur.hint_revealed_top ?? {}), [playerId]: null },
     actions: appendAction(cur, {
       player_id: playerId, action_type: 'draw',
       card_result: card,
@@ -590,22 +591,27 @@ async function doHint(game: SuperGame, playerId: string) {
   if (!cur) return;
   const expected = cur.turn_order[cur.current_idx];
   if (expected !== playerId) return;
+  if ((cur.hint_uses?.[playerId] ?? 0) > 0) return; // уже куплено
   const link = `/super-games/${game.id}`;
   const res = await chargeToTreasury(playerId, HINT_COST, 'Достать Джокера · подсказка', link);
   if (!res.ok) return;
   const chance = jokerChance(cur.deck);
   const lvl = riskLevel(chance);
+  // Показываем верхнюю карту купившему — единственный полезный эффект подсказки
+  const topCard = cur.deck[0] ?? null;
   await writeState(game.id, {
     ...cur,
     hint_uses: { ...cur.hint_uses, [playerId]: (cur.hint_uses[playerId] ?? 0) + 1 },
+    hint_revealed_top: { ...(cur.hint_revealed_top ?? {}), [playerId]: topCard },
     actions: appendAction(cur, {
       player_id: playerId, action_type: 'hint',
       risk_percent: chance, risk_level: lvl, money_delta: -HINT_COST,
+      card_result: topCard,
     }),
   });
 }
 
-async function requestPass(game: SuperGame, fromId: string, toId: string) {
+async function forcePass(game: SuperGame, fromId: string, toId: string) {
   const sb = getSupabase();
   if (!sb) return;
   const cur = await readState(game.id);
@@ -614,25 +620,10 @@ async function requestPass(game: SuperGame, fromId: string, toId: string) {
   if (expected !== fromId) return;
   if (toId === fromId) return;
   if (cur.eliminated_ids.includes(toId)) return;
-  await writeState(game.id, {
-    ...cur,
-    pending_pass_from: fromId,
-    pending_pass_to: toId,
-    actions: appendAction(cur, {
-      player_id: fromId, action_type: 'pass_request', target_player_id: toId,
-    }),
-  });
-}
-
-async function acceptPass(game: SuperGame, accepterId: string) {
-  const sb = getSupabase();
-  if (!sb) return;
-  const cur = await readState(game.id);
-  if (!cur) return;
-  if (cur.pending_pass_to !== accepterId) return;
-  // Делаем accepter «активным ходящим» только для следующего вытягивания.
-  // Простейший способ: переставляем current_idx на accepter.
-  const newIdx = cur.turn_order.indexOf(accepterId);
+  const link = `/super-games/${game.id}`;
+  const res = await chargeToTreasury(fromId, PASS_TURN_COST, 'Достать Джокера · передача хода', link);
+  if (!res.ok) return;
+  const newIdx = cur.turn_order.indexOf(toId);
   if (newIdx < 0) return;
   await writeState(game.id, {
     ...cur,
@@ -640,23 +631,8 @@ async function acceptPass(game: SuperGame, accepterId: string) {
     pending_pass_from: null,
     pending_pass_to: null,
     actions: appendAction(cur, {
-      player_id: accepterId, action_type: 'pass_accept',
-    }),
-  });
-}
-
-async function declinePass(game: SuperGame, declinerId: string) {
-  const sb = getSupabase();
-  if (!sb) return;
-  const cur = await readState(game.id);
-  if (!cur) return;
-  if (cur.pending_pass_to !== declinerId) return;
-  await writeState(game.id, {
-    ...cur,
-    pending_pass_from: null,
-    pending_pass_to: null,
-    actions: appendAction(cur, {
-      player_id: declinerId, action_type: 'pass_decline',
+      player_id: fromId, action_type: 'pass_request', target_player_id: toId,
+      money_delta: -PASS_TURN_COST,
     }),
   });
 }

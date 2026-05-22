@@ -668,6 +668,8 @@ export interface JokerDrawState {
   skip_used_ids: string[];
   /** Покупки подсказок: playerId → массив значений шанса в момент покупки. */
   hint_uses: Record<string, number>;
+  /** Топ-карта на момент покупки подсказки (показывается только купившему до его следующего тяга). */
+  hint_revealed_top?: Record<string, JokerDrawCard | null>;
   /** Запрос на передачу хода. */
   pending_pass_from?: string | null;
   pending_pass_to?: string | null;

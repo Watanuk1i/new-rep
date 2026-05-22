@@ -10,6 +10,7 @@ export const JOKERS_START = 1;
 export const TREASURY_FEE_RATE = 0.05;
 export const SKIP_TURN_COST = 20_000;
 export const HINT_COST = 30_000;
+export const PASS_TURN_COST = 30_000;
 
 export const MIN_STAKE = 10_000;
 export const MAX_STAKE = 100_000;
