@@ -115,7 +115,7 @@ export default function HomePage() {
           <h2 className="section-title text-base"><span>🏆</span> Рейтинг Академии</h2>
           <Link href="/participants" className="text-xs text-gold/80 active:text-gold-light font-semibold">Все →</Link>
         </div>
-        <div className="space-y-3">
+        <div className="space-y-4">
           {topRanking.map((p, i) => (
             <ParticipantCard key={p.id} participant={p} rank={i + 1} variant="list" />
           ))}
@@ -144,7 +144,7 @@ export default function HomePage() {
         <div className="flex items-center justify-between mb-2 px-1">
           <h2 className="section-title text-base"><span>📡</span> События академии</h2>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {academyEvents.length === 0 ? (
             <div className="glass p-6 text-center text-sm text-muted-foreground">Событий пока нет.</div>
           ) : academyEvents.map(e => (

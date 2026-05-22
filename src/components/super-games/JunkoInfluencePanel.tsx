@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import { chargeToTreasury } from '@/lib/store/tx';
 import {
+  JUNKO_ID,
   JUNKO_AUCTION_PROVOCATION_PRICE_INCREASE,
   JUNKO_LAUGH_SWAP_COST, JUNKO_LAUGH_REFUSE_COST,
   JUNKO_LAUGH_FAILURE_PENALTY, JUNKO_GENERAL_FAILURE_PENALTY,
@@ -65,9 +66,11 @@ export function JunkoInfluencePanel({ game }: { game: SuperGame }) {
   const nb = (game.state ?? {}) as any;
   const round = nb.rounds?.[nb.current_round - 1] ?? null;
 
-  // Найдём «Джунко» среди участников по имени, если не задана
-  const junkoParticipant = state.participants.find(p =>
-    p.display_name?.toLowerCase().includes('джунко') || p.display_name?.toLowerCase().includes('junko'));
+  // Берём Джунко по фиксированному id, fallback — поиск по имени.
+  const junkoParticipant =
+    state.participants.find(p => p.id === JUNKO_ID) ??
+    state.participants.find(p =>
+      p.display_name?.toLowerCase().includes('джунко') || p.display_name?.toLowerCase().includes('junko'));
 
   const inAuction = round?.status === 'seat_auction' || round?.auction_status === 'open';
   const inSwap = round?.status === 'shooter_swap';

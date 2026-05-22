@@ -45,6 +45,11 @@ export default function SuperGameDetailPage() {
     <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-4 animate-fade-in">
       <GameHeader game={game} />
 
+      {/* Принудительное закрытие — для ведущего */}
+      {isAdmin && game.status !== 'finished' && game.status !== 'cancelled' && (
+        <ForceCloseBlock game={game} />
+      )}
+
       {/* Описание / правила / ставки */}
       {game.description && (
         <div className="glass p-4">
@@ -219,6 +224,66 @@ function BasicAdminControls({ game }: { game: any }) {
             history.back();
           }
         }} className="btn-danger text-xs">✕ Удалить</button>
+      </div>
+    </div>
+  );
+}
+
+
+function ForceCloseBlock({ game }: { game: any }) {
+  const sb = getSupabase();
+
+  const forceFinish = async () => {
+    if (!sb) return;
+    if (!confirm(`Принудительно ЗАВЕРШИТЬ «${game.title}»?\n\nЭто пометит игру как finished, не запуская финальный расчёт. Деньги, уже списанные/выплаченные, останутся как есть. Используйте если игра застряла.`)) return;
+    const cur = (game.state ?? {}) as any;
+    await sb.from('super_games').update({
+      state: { ...cur, status: 'finished' },
+      status: 'finished',
+    }).eq('id', game.id);
+    await sb.from('events').insert({
+      id: 'ev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+      type: 'big_game_finished',
+      title: `${game.title} · принудительно завершено ведущим`,
+      link_url: `/super-games/${game.id}`,
+      is_for_gm_only: false,
+    });
+  };
+
+  const forceCancel = async () => {
+    if (!sb) return;
+    if (!confirm(`Принудительно ОТМЕНИТЬ «${game.title}»?\n\nЭто пометит игру как cancelled. Если в игре остались списанные ставки/банк — их придётся вернуть вручную.`)) return;
+    const cur = (game.state ?? {}) as any;
+    await sb.from('super_games').update({
+      state: { ...cur, status: 'cancelled' },
+      status: 'cancelled',
+    }).eq('id', game.id);
+    await sb.from('events').insert({
+      id: 'ev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+      type: 'big_game_finished',
+      title: `${game.title} · отменена ведущим`,
+      link_url: `/super-games/${game.id}`,
+      is_for_gm_only: false,
+    });
+  };
+
+  const forceDelete = async () => {
+    if (!sb) return;
+    if (!confirm(`УДАЛИТЬ «${game.title}» полностью? Историю не восстановить.`)) return;
+    await sb.from('super_games').delete().eq('id', game.id);
+    history.back();
+  };
+
+  return (
+    <div className="glass-strong p-3 border border-red-500/30 bg-red-500/5">
+      <div className="text-[10px] uppercase tracking-widest text-red-300/80 mb-2">⚠️ Управление ведущего · принудительно</div>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={forceFinish} className="btn-secondary text-[11px]">🏁 Завершить</button>
+        <button onClick={forceCancel} className="btn-danger text-[11px]">🛑 Отменить</button>
+        <button onClick={forceDelete} className="col-span-2 btn-danger text-[11px]">✕ Удалить запись</button>
+      </div>
+      <div className="text-[10px] text-muted-foreground mt-2">
+        Используйте если игра «зависла» в одной из фаз. Состояние записывается, реалтайм пробрасывается всем клиентам.
       </div>
     </div>
   );

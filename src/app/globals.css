@@ -167,6 +167,15 @@
   .scroll-x {
     @apply flex overflow-x-auto -mx-4 px-4 gap-2 pb-2;
     scrollbar-width: none;
+    /* Snap-выравнивание делает прокрутку понятнее на тач-устройствах */
+    scroll-snap-type: x proximity;
+    /* Мягкий правый/левый фейд, чтобы было видно, что список длиннее экрана */
+    -webkit-mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+            mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+  }
+  .scroll-x > * {
+    scroll-snap-align: start;
+    flex-shrink: 0;
   }
   .scroll-x::-webkit-scrollbar { display: none; }
 

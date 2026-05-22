@@ -322,7 +322,8 @@ INSERT INTO participants (id, display_name, status, balance, reputation, sprite_
   ('p-11',    'Мондо Овада',        'player', 950000,     50,    2,  344, NULL, FALSE),
   ('p-12',    'Киётака Ишимару',    'player', 1050000,    65,    3,  344, NULL, FALSE),
   ('p-13',    'Хифуми Ямада',       'player', 500000,     30,    1,  430, NULL, FALSE),
-  ('p-14',    'Джунко Эношима',     'player', 1500000,    60,    2,  430, NULL, FALSE);
+  ('p-14',    'Джунко Эношима',     'player', 1500000,    60,    2,  430, NULL, FALSE),
+  ('p-15',    'Кируми Тоджо',       'player', 1300000,    70,    3,  430, NULL, FALSE);
 
 -- =====================================================================
 -- 6) RPC ФУНКЦИИ (ATOMIC)

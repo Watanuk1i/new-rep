@@ -1,8 +1,8 @@
 // Константы возможностей Джунко в Комнате девяти патронов.
 
-export const JUNKO_ID = 'p-junko';
-// В seed Джунко не существует; пытаемся найти по display_name. Для MVP можно
-// оставить участника отсутствующим — кнопками управляет ведущий.
+export const JUNKO_ID = 'p-14';
+// В seed Джунко = p-14 (Джунко Эношима). Если её удалили, можно искать по
+// display_name, но в норме она есть из коробки.
 
 export const JUNKO_AUCTION_PROVOCATION_PRICE_INCREASE = 50_000;
 export const JUNKO_LAUGH_SWAP_COST = 100_000;

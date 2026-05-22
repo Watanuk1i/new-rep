@@ -80,7 +80,7 @@ export default function ParticipantsPage() {
       <div className="text-xs text-muted px-1">{list.length} участников</div>
 
       {view === 'list' ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {list.map((p, i) => (
             <ParticipantCard key={p.id} participant={p} variant="list"
               rank={sortBy === 'balance' ? i + 1 : undefined} />
