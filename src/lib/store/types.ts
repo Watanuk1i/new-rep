@@ -147,6 +147,60 @@ export interface DebtCollectionNote {
   created_at: string;
 }
 
+// v3: игры на долг
+export type DebtGameType =
+  | 'three_seals'           // 3 закрытые карты, случайный исход (-50% / 0 / +50%)
+  | 'collection_dice'       // должник vs кредитор, 2 кубика
+  | 'black_note'             // выбор уровня риска: безопасно / риск / отчаяние
+  | 'last_payment'           // ставит реальный платёж ради шанса списать остаток
+  | 'delay_game'             // 50/50 игра только за продление срока
+  | 'kirumi_ransom_table';   // 4 закрытые карты Кируми (списать / продлить / Мондо / Питомец)
+
+export type DebtGameStatus =
+  | 'created' | 'waiting_approval' | 'approved'
+  | 'active' | 'resolving' | 'finished' | 'cancelled';
+
+export type DebtGameResult =
+  | 'debt_reduced' | 'debt_increased' | 'debt_unchanged' | 'debt_paid'
+  | 'due_extended' | 'pet_candidate' | 'buyout_reduced' | 'buyout_increased'
+  | 'transferred_to_mondo' | 'requires_approval' | 'cancelled';
+
+export type DebtGameOpponentType =
+  | 'kirumi' | 'mondo' | 'peko' | 'owner' | 'pet_owner' | 'treasury' | 'celestia';
+
+export interface DebtGameAction {
+  id: string;
+  debt_game_id: string;
+  player_id: string;
+  action_type:
+    | 'choose_card' | 'roll_dice' | 'choose_risk' | 'make_payment'
+    | 'approve' | 'reject' | 'apply_result' | 'note';
+  value?: string | null;
+  amount?: number | null;
+  created_at: string;
+}
+
+export interface DebtGame {
+  id: string;
+  type: DebtGameType;
+  status: DebtGameStatus;
+  debt_id?: string | null;
+  debtor_id: string;
+  opponent_type: DebtGameOpponentType;
+  opponent_id?: string | null;
+  initial_debt_amount: number;
+  result_debt_amount?: number | null;
+  state: Record<string, any>;
+  result?: DebtGameResult | null;
+  requires_approval: boolean;
+  approved_by_id?: string | null;
+  rules_snapshot?: string | null;
+  result_description?: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at?: string | null;
+}
+
 export interface SuperGame {
   id: string;
   title: string;

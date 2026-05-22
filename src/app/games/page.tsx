@@ -84,6 +84,19 @@ export default function GamesPage() {
         </div>
       </Link>
 
+      <Link href="/debt-games" className="block">
+        <div className="relative glass p-4 active:scale-[0.99] transition-transform border border-rose-500/30 bg-rose-500/5">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-700 to-fuchsia-900 flex items-center justify-center text-2xl">⚔️</div>
+            <div className="flex-1">
+              <div className="font-heading font-bold text-base text-rose-200">Игры на долг</div>
+              <div className="text-xs text-rose-200/70">Сцены вокруг долга: Кируми, Мондо, Пеко</div>
+            </div>
+            <span className="text-rose-300/70">→</span>
+          </div>
+        </div>
+      </Link>
+
       <div className="scroll-x">
         {[
           { key: 'open', label: `Вызовы · ${openChallenges.length}`, icon: '⚔️' },
