@@ -16,6 +16,7 @@ import { MinorityRoom } from '@/components/super-games/MinorityRoom';
 import { NineBulletsRoom } from '@/components/super-games/NineBulletsRoom';
 import { CardShipBoard } from '@/components/cardship/CardShipBoard';
 import { RoyalRouletteRoom } from '@/components/super-games/RoyalRouletteRoom';
+import { ContrabandRoom } from '@/components/super-games/ContrabandRoom';
 import type { Participant } from '@/lib/store/types';
 
 export default function SuperGameDetailPage() {
@@ -66,6 +67,7 @@ export default function SuperGameDetailPage() {
       {game.type === 'nine_bullets'     && <NineBulletsRoom game={game} />}
       {game.type === 'card_ship'        && <CardShipBoard superGame={game} />}
       {game.type === 'royal_roulette'   && <RoyalRouletteRoom game={game} />}
+      {game.type === 'contraband'       && <ContrabandRoom game={game} />}
 
       {/* Базовое управление — для не-live типов */}
       {!isLiveType(game.type) && isAdmin && (
@@ -76,7 +78,7 @@ export default function SuperGameDetailPage() {
 }
 
 function isLiveType(t: string): boolean {
-  return t === 'minority_rule' || t === 'nine_bullets' || t === 'card_ship' || t === 'royal_roulette';
+  return t === 'minority_rule' || t === 'nine_bullets' || t === 'card_ship' || t === 'royal_roulette' || t === 'contraband';
 }
 
 function GameHeader({ game }: { game: any }) {

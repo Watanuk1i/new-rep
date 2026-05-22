@@ -102,7 +102,7 @@ export interface SuperGame {
   entry_fee: number;
   bank: number;
   winner_id?: string | null;
-  state: MinorityState | NineBulletsState | RoyalRouletteState | Record<string, any>;
+  state: MinorityState | NineBulletsState | RoyalRouletteState | ContrabandState | Record<string, any>;
   created_at: string;
 }
 
@@ -222,6 +222,61 @@ export interface RoyalRouletteState {
     | 'finished'
     | 'cancelled';
   winner_id?: string | null;
+}
+
+// ===== Контрабанда капитала (5-я Большая игра) =====
+export type ContrabandTeam = 'north' | 'south';
+export type InspectorAction = 'pass' | 'inspect';
+export type ContrabandResult = 'passed' | 'caught' | 'underestimated' | 'empty_case_trap';
+
+export interface ContrabandRound {
+  number: number;                              // 1..7
+  status:
+    | 'selecting_smuggler'
+    | 'choosing_amount'
+    | 'selecting_inspector'
+    | 'inspection_decision'
+    | 'reveal'
+    | 'round_result';
+  smuggler_team: ContrabandTeam;
+  smuggler_id?: string | null;
+  smuggled_amount?: number | null;             // скрыто от Таможенника до раскрытия
+  inspector_team: ContrabandTeam;
+  inspector_id?: string | null;
+  inspector_action?: InspectorAction | null;   // скрыто до раскрытия
+  suspected_amount?: number | null;            // скрыто до раскрытия
+  result?: ContrabandResult | null;
+  north_score_delta?: number;
+  south_score_delta?: number;
+  smuggler_personal_delta?: number;
+  inspector_personal_delta?: number;
+  resolved_at?: string;
+}
+
+export interface ContrabandState {
+  current_round: number;                       // 0..7
+  rounds: ContrabandRound[];                   // длина = current_round
+  north_team_ids: string[];
+  south_team_ids: string[];
+  north_captain_id?: string | null;
+  south_captain_id?: string | null;
+  north_score: number;
+  south_score: number;
+  /** История того, кто уже был Контрабандистом — чтобы каждый успел один раз. */
+  smuggler_history: Record<ContrabandTeam, string[]>;
+  status:
+    | 'scheduled'
+    | 'team_setup'
+    | 'active'
+    | 'selecting_smuggler'
+    | 'choosing_amount'
+    | 'selecting_inspector'
+    | 'inspection_decision'
+    | 'reveal'
+    | 'round_result'
+    | 'finished'
+    | 'cancelled';
+  winner_team?: ContrabandTeam | 'draw' | null;
 }
 
 export interface AcademyEvent {

@@ -535,6 +535,7 @@ function SuperGamesAdmin() {
     <div className="space-y-3">
       <CardShipCreator />
       <RoyalRouletteCreator />
+      <ContrabandCreator />
 
       <button onClick={() => setCreating(!creating)} className="btn-primary w-full">
         {creating ? '✕ Отмена' : '+ Создать Супер игру'}
@@ -1529,6 +1530,190 @@ function RoyalRouletteCreator() {
               className={cn('btn-primary', busy && 'opacity-50')}
             >
               {busy ? '...' : '♛ Создать'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// =====================================================================
+// КОНТРАБАНДА КАПИТАЛА — создание Большой игры
+// =====================================================================
+// Куратор — Бьякуя. Селестия не участвует. Все остальные активные игроки
+// делятся на 2 команды (Северный/Южный банк). Если их меньше 14 — игра
+// всё равно создаётся, ведущий разделит вручную или случайно из админ-панели
+// на странице игры.
+
+const CONTRABAND_TEAM_SIZE = 7;
+
+function ContrabandCreator() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [includeQueen, setIncludeQueen] = useState(false);
+  const [autoSplit, setAutoSplit] = useState(true);
+
+  // Все активные игроки, кроме Казны и (по умолчанию) Селестии.
+  const eligible = state.participants.filter(p =>
+    isPlayer(p) && p.is_active && (includeQueen || p.id !== 'p-queen')
+  );
+
+  const create = async () => {
+    setError(null);
+    if (eligible.length < 4) {
+      setError('Минимум 4 игрока (по 2 на команду).');
+      return;
+    }
+    if (!sb) return;
+    setBusy(true);
+
+    const sgId = uid('sg');
+    const ids = eligible.map(p => p.id);
+
+    // Размер команды = min(7, floor(N/2))
+    const teamSize = Math.min(CONTRABAND_TEAM_SIZE, Math.floor(ids.length / 2));
+
+    let northTeam: string[] = [];
+    let southTeam: string[] = [];
+    if (autoSplit) {
+      const shuffled = [...ids];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      northTeam = shuffled.slice(0, teamSize);
+      southTeam = shuffled.slice(teamSize, teamSize * 2);
+    }
+
+    const initialState = {
+      current_round: 0,
+      rounds: [],
+      north_team_ids: northTeam,
+      south_team_ids: southTeam,
+      north_captain_id: null,
+      south_captain_id: null,
+      north_score: 0,
+      south_score: 0,
+      smuggler_history: { north: [], south: [] },
+      status: autoSplit && northTeam.length > 0 ? 'team_setup' : 'scheduled',
+      winner_team: null,
+    };
+
+    await sb.from('super_games').insert({
+      id: sgId,
+      title: 'Контрабанда капитала',
+      type: 'contraband',
+      description: 'Командная игра-блеф. Контрабандист vs Таможенник. 7 раундов.',
+      rules:
+        'Куратор — Бьякуя. 2 команды по 7 игроков (или меньше при нехватке): Северный банк и Южный банк.\n' +
+        '7 раундов. В каждом — одна команда отправляет Контрабандиста (тайно несёт от 0 до 500 000), другая — Таможенника.\n' +
+        'Таможенник пропускает или проверяет (называя сумму подозрения).\n' +
+        '— Назвал больше или ровно реальной суммы → команда Таможенника получает сумму на счёт + 10% комиссии Таможеннику.\n' +
+        '— Назвал меньше → команда Контрабандиста получает сумму на счёт + 10% комиссии Контрабандисту, Таможенник теряет 100 000.\n' +
+        '— Пропустил → команда Контрабандиста получает сумму, Контрабандист 10% комиссии.\n' +
+        '— Контрабандист нёс 0, а Таможенник проверил → ловушка: Контрабандист получает 100 000, Таможенник теряет 100 000.\n' +
+        'Победители: каждый +200 000, проигравшим −100 000. При ничье — командные награды и штрафы не применяются.',
+      stakes: 'Командные счета. Победители +200k каждому, проигравшие −100k каждому.',
+      status: 'scheduled',
+      participant_ids: ids,
+      spectator_bets_enabled: false,
+      entry_fee: 0,
+      bank: 0,
+      state: initialState,
+    });
+
+    await sb.from('notifications').insert(
+      ids.map(pid => ({
+        id: uid('n'),
+        recipient_id: pid,
+        type: 'big_game_invite',
+        title: 'Контрабанда капитала',
+        body: 'Бьякуя собирает 2 команды для большой игры.',
+        link_url: `/super-games/${sgId}`,
+        is_read: false,
+      })),
+    );
+
+    await sb.from('events').insert({
+      id: uid('ev'),
+      type: 'big_game_start',
+      title: 'Бьякуя открывает «Контрабанду капитала»',
+      body: `Игроков: ${ids.length}. Команды по ${teamSize}.`,
+      link_url: `/super-games/${sgId}`,
+      is_for_gm_only: false,
+    });
+
+    setBusy(false);
+    setOpen(false);
+  };
+
+  const teamSize = Math.min(CONTRABAND_TEAM_SIZE, Math.floor(eligible.length / 2));
+
+  return (
+    <div className="glass-strong gold-border p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-2xl">💼</div>
+        <div className="flex-1">
+          <div className="text-[10px] uppercase tracking-widest text-gold/70">Большая игра</div>
+          <div className="font-heading text-lg font-bold text-gradient-gold leading-tight">
+            Контрабанда капитала
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            Куратор — Бьякуя · 2 команды × {teamSize} · 7 раундов
+          </div>
+        </div>
+      </div>
+
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="btn-primary w-full">
+          + Создать Контрабанду капитала
+        </button>
+      ) : (
+        <div className="space-y-3 animate-slide-down">
+          <div className="text-[11px] text-muted-foreground bg-white/5 rounded-lg px-3 py-2 border border-white/5">
+            Будет добавлено {eligible.length} игроков. Команды по {teamSize}.
+            {eligible.length < 14 && eligible.length >= 4 && (
+              <> При меньшем числе участников размер команды уменьшится.</>
+            )}
+          </div>
+
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoSplit}
+              onChange={e => setAutoSplit(e.target.checked)}
+              className="w-4 h-4 accent-gold"
+            />
+            Сразу разделить случайно (потом всё равно можно править вручную)
+          </label>
+
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeQueen}
+              onChange={e => setIncludeQueen(e.target.checked)}
+              className="w-4 h-4 accent-gold"
+            />
+            Включить Селестию как игрока (по умолчанию — нет, она наблюдатель)
+          </label>
+
+          {error && (
+            <div className="glass crimson-border p-2 text-xs text-red-300 text-center">{error}</div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setOpen(false)} className="btn-secondary">Отмена</button>
+            <button
+              onClick={create}
+              disabled={busy || eligible.length < 4}
+              className={cn('btn-primary', busy && 'opacity-50')}
+            >
+              {busy ? '...' : '💼 Создать'}
             </button>
           </div>
         </div>
