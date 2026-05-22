@@ -388,7 +388,13 @@ BEGIN
      SET state = jsonb_set(state, ARRAY['round','votes',p_voter_id], to_jsonb(p_choice), true)
    WHERE id = p_game_id AND status = 'live'
      AND state->'round'->>'status' = 'open'
-     AND COALESCE(state->'round'->'votes' ? p_voter_id, FALSE) = FALSE;
+     AND COALESCE(state->'round'->'votes' ? p_voter_id, FALSE) = FALSE
+     -- Голосовать может только живой участник: его id должен быть в alive_ids
+     AND EXISTS (
+       SELECT 1
+         FROM jsonb_array_elements_text(state->'alive_ids') AS x(id)
+        WHERE x.id = p_voter_id
+     );
   GET DIAGNOSTICS affected = ROW_COUNT;
   RETURN affected > 0;
 END;
