@@ -891,6 +891,10 @@ function FullResetSection() {
       await sb.from('rumors').delete().neq('id', '');
       await sb.from('super_games').delete().neq('id', '');
       await sb.from('pari').delete().neq('id', '');
+      // Сначала зависимые таблицы кредитов, потом сами долги
+      try { await sb.from('debt_collection_notes').delete().neq('id', ''); } catch {}
+      try { await sb.from('debt_payments').delete().neq('id', ''); } catch {}
+      try { await sb.from('loan_requests').delete().neq('id', ''); } catch {}
       await sb.from('debts').delete().neq('id', '');
       await sb.from('challenges').delete().neq('id', '');
 
