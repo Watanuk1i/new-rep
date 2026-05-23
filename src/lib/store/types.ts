@@ -317,13 +317,23 @@ export interface RoyalRouletteRound {
   deltas?: Record<string, number>;               // изменение баланса игрока за раунд
   treasury_delta?: number;
   resolved_at?: string;
+  /** Привилегии Селестии после раскрытия раунда. */
+  arrogance_penalty_target?: string | null;      // «Штраф за дерзость» — кому
+  arrogance_penalty_amount?: number;             // дополнительный штраф (обычно 100k)
+  luck_tax_target?: string | null;               // «Налог на удачу» — у кого 20% выигрыша
+  luck_tax_amount?: number;                      // сумма списанная игроку → Селестии
+  cowardice_penalty_target?: string | null;      // «Штраф за трусость» — у кого −50% safe-выигрыша
+  cowardice_penalty_amount?: number;             // сумма уменьшения
 }
 
 export interface RoyalRouletteState {
   current_round: number;                          // 1..5
   rounds: RoyalRouletteRound[];                   // длина = current_round
   celestia_id: string;                            // обычно 'p-queen'
-  celestia_privilege_used: boolean;
+  celestia_privilege_used: boolean;               // «Королевский взгляд» (старая привилегия)
+  arrogance_penalty_used?: boolean;               // «Штраф за дерзость» — 1 раз за игру
+  luck_tax_used?: boolean;                        // «Налог на удачу» — 1 раз за игру
+  cowardice_penalty_used?: boolean;               // «Штраф за трусость» — 1 раз за игру
   fee_paid: Record<string, number>;               // взносы на старте
   net_profit: Record<string, number>;             // чистая прибыль за все раунды
   status:

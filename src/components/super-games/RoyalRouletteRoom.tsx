@@ -329,6 +329,7 @@ function RoundView({
       {round.status === 'resolved' && (
         <ResolvedBlock
           round={round} participants={participants} celestia={celestia}
+          game={game} rr={rr} isCelestiaOrAdmin={isAdmin}
         />
       )}
     </div>
@@ -695,9 +696,10 @@ function Wheel({ angle, highlightSector }: { angle: number; highlightSector: Rou
 // ---------- Раскрытие результата ----------
 
 function ResolvedBlock({
-  round, participants, celestia,
+  round, participants, celestia, game, rr, isCelestiaOrAdmin,
 }: {
   round: RoyalRouletteRound; participants: Participant[]; celestia: Participant | null;
+  game: SuperGame; rr: RoyalRouletteState; isCelestiaOrAdmin: boolean;
 }) {
   const sector = round.result_sector!;
   const meta = SECTOR_META[sector];
@@ -719,10 +721,23 @@ function ResolvedBlock({
         {participants.map(p => {
           const bet = round.bets[p.id];
           const delta = round.deltas?.[p.id] ?? 0;
+          // Показываем дополнительные пометки от привилегий
+          const arrog = round.arrogance_penalty_target === p.id;
+          const luck = round.luck_tax_target === p.id;
+          const cow = round.cowardice_penalty_target === p.id;
           return (
             <div key={p.id} className="flex items-center gap-2 p-2 rounded-xl bg-card/40">
               <CharacterIcon participant={p} size="xs" ringless />
-              <span className="flex-1 text-sm truncate">{p.display_name}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm truncate">{p.display_name}</div>
+                {(arrog || luck || cow) && (
+                  <div className="text-[9px] text-fuchsia-300 italic mt-0.5">
+                    {arrog && '♛ Штраф за дерзость '}
+                    {luck && '♛ Налог на удачу '}
+                    {cow && '♛ Штраф за трусость'}
+                  </div>
+                )}
+              </div>
               {bet
                 ? <BetChip bet={bet} />
                 : <span className="text-[10px] text-muted-foreground italic">пропустил</span>}
@@ -742,8 +757,249 @@ function ResolvedBlock({
           ♛ В этом раунде Селестия использовала «Королевский взгляд».
         </div>
       )}
+
+      {isCelestiaOrAdmin && round.status === 'resolved' && (
+        <CelestiaPrivilegesBlock game={game} rr={rr} round={round} participants={participants} />
+      )}
     </div>
   );
+}
+
+// ---------- Привилегии Селестии после раскрытия раунда ----------
+
+function CelestiaPrivilegesBlock({
+  game, rr, round, participants,
+}: {
+  game: SuperGame; rr: RoyalRouletteState; round: RoyalRouletteRound; participants: Participant[];
+}) {
+  const [openType, setOpenType] = useState<null | 'arrogance' | 'luck' | 'cowardice'>(null);
+  const arrUsed = rr.arrogance_penalty_used;
+  const luckUsed = rr.luck_tax_used;
+  const cowUsed = rr.cowardice_penalty_used;
+
+  // Целевые игроки для каждой привилегии (по результату раунда)
+  const royalLosers = participants.filter(p => {
+    const bet = round.bets[p.id];
+    const delta = round.deltas?.[p.id] ?? 0;
+    return bet === 'royal' && delta < 0; // выбрали Royal и проиграли
+  });
+  const winners = participants.filter(p => {
+    const delta = round.deltas?.[p.id] ?? 0;
+    return delta > 0 && p.id !== rr.celestia_id;
+  });
+  const safeWinners = participants.filter(p => {
+    const bet = round.bets[p.id];
+    const delta = round.deltas?.[p.id] ?? 0;
+    return bet === 'safe' && delta > 0;
+  });
+
+  const hasAnyTarget = (royalLosers.length > 0 && !arrUsed)
+    || (winners.length > 0 && !luckUsed)
+    || (safeWinners.length > 0 && !cowUsed);
+
+  if (!hasAnyTarget && arrUsed && luckUsed && cowUsed) {
+    return (
+      <div className="text-[10px] text-muted-foreground italic text-center">
+        ♛ Все привилегии Селестии в этой игре уже использованы.
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass p-3 border border-fuchsia-500/30 bg-fuchsia-500/5 space-y-2">
+      <div className="text-[10px] uppercase tracking-widest text-fuchsia-300">♛ Привилегии Селестии · после раскрытия</div>
+
+      <div className="grid grid-cols-1 gap-1.5">
+        <button
+          disabled={arrUsed || royalLosers.length === 0}
+          onClick={() => setOpenType('arrogance')}
+          className={cn('px-2 py-2 rounded-lg text-xs text-left border',
+            arrUsed ? 'bg-card/20 border-white/5 opacity-40'
+              : royalLosers.length === 0 ? 'bg-card/30 border-white/8 opacity-50'
+              : 'bg-fuchsia-500/10 border-fuchsia-500/30 active:bg-fuchsia-500/20')}>
+          ⚜ Штраф за дерзость · −100k проигравшему Королевскую
+          {arrUsed && ' (использовано)'}
+        </button>
+        <button
+          disabled={luckUsed || winners.length === 0}
+          onClick={() => setOpenType('luck')}
+          className={cn('px-2 py-2 rounded-lg text-xs text-left border',
+            luckUsed ? 'bg-card/20 border-white/5 opacity-40'
+              : winners.length === 0 ? 'bg-card/30 border-white/8 opacity-50'
+              : 'bg-fuchsia-500/10 border-fuchsia-500/30 active:bg-fuchsia-500/20')}>
+          💸 Налог на удачу · 20% выигрыша → Селестии
+          {luckUsed && ' (использовано)'}
+        </button>
+        <button
+          disabled={cowUsed || safeWinners.length === 0}
+          onClick={() => setOpenType('cowardice')}
+          className={cn('px-2 py-2 rounded-lg text-xs text-left border',
+            cowUsed ? 'bg-card/20 border-white/5 opacity-40'
+              : safeWinners.length === 0 ? 'bg-card/30 border-white/8 opacity-50'
+              : 'bg-fuchsia-500/10 border-fuchsia-500/30 active:bg-fuchsia-500/20')}>
+          🛡 Штраф за трусость · −50% Безопасного выигрыша
+          {cowUsed && ' (использовано)'}
+        </button>
+      </div>
+
+      {openType === 'arrogance' && (
+        <PrivilegeTargetPicker
+          title="Штраф за дерзость"
+          quote="«Вы хотели играть по-королевски. Тогда и платить будете по-королевски.»"
+          targets={royalLosers}
+          onPick={(pid) => applyArrogancePenalty(game, pid).then(() => setOpenType(null))}
+          onCancel={() => setOpenType(null)}
+        />
+      )}
+      {openType === 'luck' && (
+        <PrivilegeTargetPicker
+          title="Налог на удачу"
+          quote="«Поздравляю. Академия рада вашему успеху. Настолько рада, что заберёт свою долю.»"
+          targets={winners}
+          onPick={(pid) => applyLuckTax(game, pid).then(() => setOpenType(null))}
+          onCancel={() => setOpenType(null)}
+        />
+      )}
+      {openType === 'cowardice' && (
+        <PrivilegeTargetPicker
+          title="Штраф за трусость"
+          quote="«Безопасность — это роскошь. А роскошь в моей Академии облагается налогом.»"
+          targets={safeWinners}
+          onPick={(pid) => applyCowardicePenalty(game, pid).then(() => setOpenType(null))}
+          onCancel={() => setOpenType(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PrivilegeTargetPicker({
+  title, quote, targets, onPick, onCancel,
+}: {
+  title: string; quote: string;
+  targets: Participant[];
+  onPick: (id: string) => void; onCancel: () => void;
+}) {
+  return (
+    <div className="glass-strong p-3 border border-fuchsia-500/40 space-y-2">
+      <div className="text-xs font-bold text-fuchsia-200">{title}</div>
+      <div className="text-[11px] text-fuchsia-300 italic">{quote}</div>
+      <div className="space-y-1">
+        {targets.map(p => (
+          <button key={p.id} onClick={() => onPick(p.id)}
+            className="w-full flex items-center gap-2 p-1.5 rounded-lg bg-card/40 active:bg-white/5 text-left">
+            <CharacterIcon participant={p} size="xs" ringless />
+            <span className="text-sm flex-1">{p.display_name}</span>
+            <span className="text-fuchsia-300 text-xs">→</span>
+          </button>
+        ))}
+      </div>
+      <button onClick={onCancel} className="btn-secondary w-full text-xs">Отмена</button>
+    </div>
+  );
+}
+
+async function applyArrogancePenalty(game: SuperGame, targetId: string) {
+  const sb = getSupabase();
+  if (!sb) return;
+  const { data } = await sb.from('super_games').select('state').eq('id', game.id).single();
+  const cur: RoyalRouletteState = data?.state ?? {};
+  if (cur.arrogance_penalty_used) { alert('Уже использовано'); return; }
+  const idx = (cur.current_round ?? 1) - 1;
+  const rounds = [...(cur.rounds ?? [])];
+  const round = rounds[idx];
+  if (!round) return;
+  const PENALTY = 100_000;
+  // Списываем у игрока в Казну
+  await chargeToTreasury(targetId, PENALTY,
+    `Штраф за дерзость · Королевская рулетка раунд ${round.number}`,
+    `/super-games/${game.id}`);
+  // Обновляем state: помечаем флаг и пишем дельту в раунд
+  const newDeltas = { ...(round.deltas ?? {}) };
+  newDeltas[targetId] = (newDeltas[targetId] ?? 0) - PENALTY;
+  const netProfit = { ...(cur.net_profit ?? {}) };
+  netProfit[targetId] = (netProfit[targetId] ?? 0) - PENALTY;
+  rounds[idx] = {
+    ...round, deltas: newDeltas,
+    arrogance_penalty_target: targetId,
+    arrogance_penalty_amount: PENALTY,
+  };
+  await sb.from('super_games').update({
+    state: { ...cur, rounds, net_profit: netProfit, arrogance_penalty_used: true },
+  }).eq('id', game.id);
+  await pushEvent('Селестия применила «Штраф за дерзость»',
+    'Вы хотели играть по-королевски. Тогда и платить будете по-королевски.',
+    `/super-games/${game.id}`);
+}
+
+async function applyLuckTax(game: SuperGame, targetId: string) {
+  const sb = getSupabase();
+  if (!sb) return;
+  const { data } = await sb.from('super_games').select('state').eq('id', game.id).single();
+  const cur: RoyalRouletteState = data?.state ?? {};
+  if (cur.luck_tax_used) { alert('Уже использовано'); return; }
+  const idx = (cur.current_round ?? 1) - 1;
+  const rounds = [...(cur.rounds ?? [])];
+  const round = rounds[idx];
+  if (!round) return;
+  const win = round.deltas?.[targetId] ?? 0;
+  if (win <= 0) { alert('У игрока нет выигрыша в этом раунде'); return; }
+  const TAX = Math.floor(win * 0.20);
+  // Игрок → Селестии
+  const { applyTransfer } = await import('@/lib/store/tx');
+  await applyTransfer(targetId, cur.celestia_id, TAX,
+    `Налог на удачу · Королевская рулетка раунд ${round.number}`,
+    `/super-games/${game.id}`);
+  const newDeltas = { ...(round.deltas ?? {}) };
+  newDeltas[targetId] = (newDeltas[targetId] ?? 0) - TAX;
+  newDeltas[cur.celestia_id] = (newDeltas[cur.celestia_id] ?? 0) + TAX;
+  const netProfit = { ...(cur.net_profit ?? {}) };
+  netProfit[targetId] = (netProfit[targetId] ?? 0) - TAX;
+  netProfit[cur.celestia_id] = (netProfit[cur.celestia_id] ?? 0) + TAX;
+  rounds[idx] = {
+    ...round, deltas: newDeltas,
+    luck_tax_target: targetId,
+    luck_tax_amount: TAX,
+  };
+  await sb.from('super_games').update({
+    state: { ...cur, rounds, net_profit: netProfit, luck_tax_used: true },
+  }).eq('id', game.id);
+  await pushEvent('Селестия применила «Налог на удачу»',
+    'Поздравляю. Академия рада вашему успеху. Настолько рада, что заберёт свою долю.',
+    `/super-games/${game.id}`);
+}
+
+async function applyCowardicePenalty(game: SuperGame, targetId: string) {
+  const sb = getSupabase();
+  if (!sb) return;
+  const { data } = await sb.from('super_games').select('state').eq('id', game.id).single();
+  const cur: RoyalRouletteState = data?.state ?? {};
+  if (cur.cowardice_penalty_used) { alert('Уже использовано'); return; }
+  const idx = (cur.current_round ?? 1) - 1;
+  const rounds = [...(cur.rounds ?? [])];
+  const round = rounds[idx];
+  if (!round) return;
+  const win = round.deltas?.[targetId] ?? 0;
+  if (win <= 0) return;
+  const PENALTY = Math.floor(win * 0.5); // забираем половину
+  await chargeToTreasury(targetId, PENALTY,
+    `Штраф за трусость · Королевская рулетка раунд ${round.number}`,
+    `/super-games/${game.id}`);
+  const newDeltas = { ...(round.deltas ?? {}) };
+  newDeltas[targetId] = (newDeltas[targetId] ?? 0) - PENALTY;
+  const netProfit = { ...(cur.net_profit ?? {}) };
+  netProfit[targetId] = (netProfit[targetId] ?? 0) - PENALTY;
+  rounds[idx] = {
+    ...round, deltas: newDeltas,
+    cowardice_penalty_target: targetId,
+    cowardice_penalty_amount: PENALTY,
+  };
+  await sb.from('super_games').update({
+    state: { ...cur, rounds, net_profit: netProfit, cowardice_penalty_used: true },
+  }).eq('id', game.id);
+  await pushEvent('Селестия применила «Штраф за трусость»',
+    'Безопасность — это роскошь. А роскошь в моей Академии облагается налогом.',
+    `/super-games/${game.id}`);
 }
 
 function resolvedAngleFor(index: number): number {
@@ -981,6 +1237,18 @@ async function resolveSpin(game: SuperGame) {
   const rounds = [...(cur.rounds ?? [])];
   const round = rounds[idx];
   if (!round || !round.result_sector) return;
+  // ЗАЩИТА от двойного срабатывания: если уже применили дельты — не пересчитываем.
+  if (round.deltas || round.status === 'resolved' || round.resolved_at) return;
+  // Сразу помечаем раунд как resolved, чтобы повторный клик увидел и вышел.
+  // Дельты применятся ниже — атомарно через двойной апдейт.
+  rounds[idx] = { ...round, status: 'resolved', resolved_at: new Date().toISOString() };
+  const lockResult = await sb.from('super_games').update({
+    state: { ...cur, rounds },
+  }).eq('id', game.id).eq('status', cur.status); // optimistic lock на статус
+  if (lockResult.error) {
+    console.error('[resolveSpin] lock failed', lockResult.error);
+    return;
+  }
 
   const deltas = resolveRound(round.result_sector, round.bets, cur.celestia_id);
 
@@ -999,12 +1267,11 @@ async function resolveSpin(game: SuperGame) {
     netProfit[pid] = (netProfit[pid] ?? 0) + delta;
   }
 
+  // Финальная запись с дельтами и сменой статуса игры
   rounds[idx] = {
-    ...round,
-    status: 'resolved',
+    ...rounds[idx],
     deltas: deltas.perPlayer,
     treasury_delta: deltas.treasury,
-    resolved_at: new Date().toISOString(),
   };
 
   await sb.from('super_games').update({
