@@ -107,6 +107,7 @@ export function JokerDrawRoom({ game }: { game: SuperGame }) {
   const finished = j.status === 'finished';
 
   const allPaid = players.length > 0 && players.every(p => (j.fee_paid ?? {})[p.id] > 0);
+  const isActive = j.status === 'active' || allPaid;
 
   const chance = jokerChance(j.deck);
   const lvl = riskLevel(chance);
@@ -115,14 +116,18 @@ export function JokerDrawRoom({ game }: { game: SuperGame }) {
     <div className="space-y-3">
       <Header game={game} j={j} />
 
-      <StakesBlock
-        game={game} players={players} feePaid={j.fee_paid}
-        stake={j.stake} isAdmin={isAdmin}
-        onCollect={() => collectStakes(game, players, j.stake)}
-        onCancel={() => cancelGame(game, players)}
-      />
+      {/* StakesBlock показываем только когда не все оплатили (на случай ручного запуска без лобби) */}
+      {!allPaid && (
+        <StakesBlock
+          game={game} players={players} feePaid={j.fee_paid}
+          stake={j.stake} isAdmin={isAdmin}
+          onCollect={() => collectStakes(game, players, j.stake)}
+          onCancel={() => cancelGame(game, players)}
+        />
+      )}
 
-      {allPaid && !finished && j.status !== 'cancelled' && (
+      {/* Игровое поле показываем когда статус активен И есть колода — либо все оплатили */}
+      {(isActive || allPaid) && !finished && j.status !== 'cancelled' && j.deck.length > 0 && (
         <div className="glass p-3 space-y-3">
           {/* Колода и шанс */}
           <DeckIndicator deck={j.deck} chance={chance} level={lvl} />
@@ -161,6 +166,29 @@ export function JokerDrawRoom({ game }: { game: SuperGame }) {
 
           {/* История ходов */}
           <ActionsLog actions={j.actions} players={players} />
+        </div>
+      )}
+
+      {/* Если активна но колоды нет — показать диагностику */}
+      {isActive && j.deck.length === 0 && !finished && j.status !== 'cancelled' && (
+        <div className="glass p-4 text-center text-sm text-amber-300">
+          ⏳ Колода ещё не инициализирована. Если игра зависла — нажмите ниже:
+          <button
+            onClick={async () => {
+              const sb = getSupabase();
+              if (!sb) return;
+              const order = [...players.map(p => p.id)];
+              for (let i = order.length - 1; i > 0; i--) {
+                const k = Math.floor(Math.random() * (i + 1));
+                [order[i], order[k]] = [order[k], order[i]];
+              }
+              await sb.from('super_games').update({
+                state: { ...j, deck: ['normal','normal','normal','normal','normal','normal','normal','normal','normal','normal','joker'].sort(() => Math.random() - 0.5), turn_order: order, current_idx: 0 },
+              }).eq('id', game.id);
+            }}
+            className="btn-primary w-full mt-2 text-xs">
+            🔄 Перегенерировать колоду
+          </button>
         </div>
       )}
 

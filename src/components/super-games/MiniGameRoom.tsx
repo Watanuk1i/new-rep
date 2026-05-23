@@ -112,13 +112,20 @@ export function MiniGameRoom({ game }: { game: SuperGame }) {
 async function startMiniGame(game: SuperGame) {
   const sb = getSupabase();
   if (!sb) return;
-  const { data } = await sb.from('super_games').select('state, bank, participant_ids, entry_fee, type').eq('id', game.id).single();
-  if (!data) return;
+  const { data, error } = await sb.from('super_games').select('state, bank, participant_ids, entry_fee, type').eq('id', game.id).single();
+  if (error || !data) {
+    console.error('[startMiniGame] read failed', error);
+    alert('Не удалось загрузить игру: ' + (error?.message || 'нет данных'));
+    return;
+  }
   const cur = (data.state ?? {}) as any;
   const stake = data.entry_fee ?? cur.stake ?? 0;
   const participants = (data.participant_ids ?? []) as string[];
-  const players = participants
-    .map((pid: string) => ({ id: pid })) as any as Participant[];
+
+  if (participants.length === 0) {
+    alert('Нет игроков в игре. Пригласите хотя бы одного.');
+    return;
+  }
 
   // Liar dice и 21 отчаяния — отдельная логика (списание + раздача)
   if (data.type === 'mini_liar_dice') {
@@ -138,11 +145,16 @@ async function startMiniGame(game: SuperGame) {
 
   // Сразу собираем ставки для red_black и mini_joker
   const collectImmediately = ['mini_red_black', 'mini_joker'];
-  if (stake > 0 && collectImmediately.includes(data.type)) {
+  if (collectImmediately.includes(data.type)) {
     for (const pid of participants) {
       if ((feePaid[pid] ?? 0) > 0) continue;
-      const res = await chargeToTreasury(pid, stake, `Малая игра · ставка`, link, { noDebt: true });
-      if (res.ok) { feePaid[pid] = stake; added += stake; }
+      if (stake > 0) {
+        const res = await chargeToTreasury(pid, stake, `Малая игра · ставка`, link, { noDebt: true });
+        if (res.ok) { feePaid[pid] = stake; added += stake; }
+      } else {
+        // Бесплатная игра — отметим что «оплачено» (0), чтобы UI не зависал на StakesBlock
+        feePaid[pid] = 0.0001;
+      }
     }
   }
 
@@ -158,13 +170,30 @@ async function startMiniGame(game: SuperGame) {
     extraStateUpdate.deck = freshJokerDeck();
     extraStateUpdate.turn_order = order;
     extraStateUpdate.current_idx = 0;
+    // Гарантируем все нужные поля чтоб getState не падал и UI ел их
+    extraStateUpdate.mode = cur.mode ?? 'quick';
+    extraStateUpdate.stake = stake;
+    extraStateUpdate.eliminated_ids = cur.eliminated_ids ?? [];
+    extraStateUpdate.skip_used_ids = cur.skip_used_ids ?? [];
+    extraStateUpdate.hint_uses = cur.hint_uses ?? {};
+    extraStateUpdate.hint_revealed_top = cur.hint_revealed_top ?? {};
+    extraStateUpdate.actions = cur.actions ?? [];
+    extraStateUpdate.winner_ids = [];
+    extraStateUpdate.loser_ids = [];
+    extraStateUpdate.treasury_fee = 0;
+    extraStateUpdate.payout_bank = 0;
   }
 
-  await sb.from('super_games').update({
-    state: { ...cur, ...extraStateUpdate, status: 'active', fee_paid: feePaid, bank: (cur.bank ?? 0) + added },
+  const newBank = (data.bank ?? 0) + added;
+  const updateRes = await sb.from('super_games').update({
+    state: { ...cur, ...extraStateUpdate, status: 'active', fee_paid: feePaid, bank: newBank },
     status: 'live',
-    bank: (data.bank ?? 0) + added,
+    bank: newBank,
   }).eq('id', game.id);
+  if (updateRes.error) {
+    console.error('[startMiniGame] update failed', updateRes.error);
+    alert('Не удалось запустить игру: ' + updateRes.error.message);
+  }
 }
 
 // ===========================================================================
