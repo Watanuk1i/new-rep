@@ -32,13 +32,15 @@ export default function GamesPage() {
   const [miniOpen, setMiniOpen] = useState(false);
   const sb = getSupabase();
 
-  // Открытые вызовы — все pending в которых текущий не creator
-  // (или которые либо открытые, либо адресованы текущему)
+  // Открытые вызовы — все pending. Видны всем игрокам (включая создателя),
+  // если вызов адресован им или открыт для всех.
   const openChallenges = state.challenges.filter(c => {
     if (c.status !== 'pending') return false;
     if (!currentUser) return c.opponent_id === null;
-    if (c.creator_id === currentUser.id) return false;
-    return c.opponent_id === null || c.opponent_id === currentUser.id;
+    // Открытые видим все, адресные — только адресат и создатель
+    return c.opponent_id === null
+      || c.opponent_id === currentUser.id
+      || c.creator_id === currentUser.id;
   });
 
   const myChallenges = currentUser
@@ -198,6 +200,7 @@ export default function GamesPage() {
           ) : openChallenges.map(ch => {
             const creator = state.participants.find(p => p.id === ch.creator_id);
             const gl = GAME_LABELS[ch.game_type];
+            const isMine = !!currentUser && ch.creator_id === currentUser.id;
             const targeted = ch.opponent_id === currentUser?.id;
             const insufficient = !!currentUser && currentUser.balance < ch.stake_amount;
             return (
@@ -206,25 +209,31 @@ export default function GamesPage() {
                 <div className="flex-1 min-w-0">
                   <div className="font-bold text-sm truncate">
                     {creator?.display_name || '—'}
-                    {targeted && <span className="text-[10px] text-gold ml-1">(вас вызвали)</span>}
+                    {isMine && <span className="text-[10px] text-emerald-300 ml-1">(ваш вызов)</span>}
+                    {targeted && !isMine && <span className="text-[10px] text-gold ml-1">(вас вызвали)</span>}
                   </div>
                   <div className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                     <span>{gl.icon}</span><span>{gl.label}</span>
                     <span>·</span>
                     <Yen amount={ch.stake_amount} className="text-gold" iconClass="w-3 h-3" />
                     {ch.opponent_id === null && <span className="text-emerald-300">· открытый</span>}
-                    {insufficient && <span className="text-red-300">· не хватает баланса</span>}
+                    {insufficient && !isMine && <span className="text-red-300">· не хватает баланса</span>}
                   </div>
                 </div>
-                {currentUser ? (
+                {!currentUser ? (
+                  <Link href="/login" className="btn-secondary text-xs px-3" style={{ minHeight: 40 }}>Войти</Link>
+                ) : isMine ? (
+                  <button onClick={() => cancel(ch)}
+                    className="btn-danger text-xs px-3" style={{ minHeight: 40 }}>
+                    ✕ Отменить
+                  </button>
+                ) : (
                   <button onClick={() => accept(ch)}
                     disabled={insufficient}
                     className={cn('btn-primary text-xs px-4', insufficient && 'opacity-40 cursor-not-allowed')}
                     style={{ minHeight: 40 }}>
                     {insufficient ? 'Не хватает' : 'Принять'}
                   </button>
-                ) : (
-                  <Link href="/login" className="btn-secondary text-xs px-3" style={{ minHeight: 40 }}>Войти</Link>
                 )}
               </div>
             );

@@ -14,7 +14,6 @@ export interface MiniGameMeta {
 
 export const MINI_GAMES: MiniGameMeta[] = [
   { type: 'liars_bar',       label: 'Бар лжецов',       emoji: '🍷', minPlayers: 2, maxPlayers: 6, defaultStake: 100_000 },
-  { type: 'mini_red_black',  label: 'Красное / Чёрное', emoji: '🎴', minPlayers: 2, maxPlayers: 2, defaultStake: 50_000 },
   { type: 'mini_blind_bid',  label: 'Слепая ставка',    emoji: '🎯', minPlayers: 2, maxPlayers: 6, defaultStake: 0 },
   { type: 'mini_liar_dice',  label: 'Лжец на кубиках',  emoji: '🎲', minPlayers: 2, maxPlayers: 6, defaultStake: 50_000 },
   { type: 'mini_ransom',     label: 'Выкупной стол',    emoji: '🃟', minPlayers: 1, maxPlayers: 1, defaultStake: 0, allowsDebt: true, adminOnly: true },
