@@ -1,10 +1,10 @@
 'use client';
 
-// Страница «Фонд Тогами» — баланс, последние операции, активные долги
-// перед Фондом, ручные действия Бьякуи/ведущего.
-// Логика без отдельной таблицы — всё через существующие участников и долги.
+// Фонд Тогами — куда уходят минусовые балансы и крупные провалы.
+// Показывает баланс, последние крупные операции, активные долги перед фондом
+// и игроков с худшим балансом.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/StoreProvider';
 import { CharacterIcon } from '@/components/ui/CharacterIcon';
@@ -12,15 +12,15 @@ import { Yen } from '@/components/ui/Yen';
 import { cn, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import {
-  TOGAMI_FUND_ID, BYAKUYA_ID, TOGAMI_FUND_START_BALANCE,
+  TOGAMI_FUND_ID, BYAKUYA_ID,
 } from '@/lib/togami/constants';
+
+const BIG_OPERATION_THRESHOLD = 500_000;
 
 export default function TogamiPage() {
   const { state, currentUser, role } = useStore();
   const sb = getSupabase();
-  const isByakuya = !!currentUser && currentUser.id === BYAKUYA_ID;
   const isAdmin = role === 'gm' || role === 'queen';
-  const canManage = isByakuya || isAdmin;
 
   const fund = state.participants.find(p => p.id === TOGAMI_FUND_ID) ?? null;
   const byakuya = state.participants.find(p => p.id === BYAKUYA_ID) ?? null;
@@ -30,50 +30,49 @@ export default function TogamiPage() {
     d.creditor_id === TOGAMI_FUND_ID && (d.status === 'active' || d.status === 'overdue'),
   );
 
+  // Игроки с минусовым/малым балансом
+  const lowBalancePlayers = useMemo(() => {
+    return [...state.participants]
+      .filter(p => isPlayer(p))
+      .sort((a, b) => a.balance - b.balance)
+      .slice(0, 10);
+  }, [state.participants]);
+
+  // Топ должников Фонду
+  const topFundDebtors = useMemo(() => {
+    const map = new Map<string, number>();
+    fundDebts.forEach(d => {
+      map.set(d.debtor_id, (map.get(d.debtor_id) ?? 0) + d.amount);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+  }, [fundDebts]);
+
   const [history, setHistory] = useState<any[]>([]);
+  const [bigOps, setBigOps] = useState<any[]>([]);
   useEffect(() => {
     if (!sb) return;
     let alive = true;
-    (async () => {
-      const { data } = await sb.from('history').select('*')
-        .eq('participant_id', TOGAMI_FUND_ID)
-        .order('created_at', { ascending: false }).limit(50);
-      if (alive) setHistory(data ?? []);
-    })();
-    const id = setInterval(async () => {
-      if (!alive || !sb) return;
-      const { data } = await sb.from('history').select('*')
-        .eq('participant_id', TOGAMI_FUND_ID)
-        .order('created_at', { ascending: false }).limit(50);
-      if (alive) setHistory(data ?? []);
-    }, 7000);
+    const load = async () => {
+      const [{ data: hist }, { data: big }] = await Promise.all([
+        sb.from('history').select('*')
+          .eq('participant_id', TOGAMI_FUND_ID)
+          .order('created_at', { ascending: false }).limit(30),
+        sb.from('history').select('*')
+          .gte('amount', BIG_OPERATION_THRESHOLD)
+          .order('created_at', { ascending: false }).limit(30),
+      ]);
+      if (!alive) return;
+      setHistory(hist ?? []);
+      setBigOps(big ?? []);
+    };
+    load();
+    const id = setInterval(load, 8000);
     return () => { alive = false; clearInterval(id); };
   }, [sb]);
 
-  const createFund = async () => {
-    if (!sb) return;
-    if (!confirm('Создать системный аккаунт «Фонд Тогами» с балансом 15M? Это резервный сценарий — обычно фонд уже создан как Казна академии.')) return;
-    await sb.from('participants').insert({
-      id: TOGAMI_FUND_ID,
-      display_name: 'Фонд Тогами',
-      status: 'treasury',
-      balance: TOGAMI_FUND_START_BALANCE,
-      reputation: 0,
-      wins: 0, losses: 0,
-      is_active: true,
-      is_registered: false,
-    });
-    await sb.from('history').insert({
-      id: 'h-' + Date.now(),
-      participant_id: TOGAMI_FUND_ID,
-      action: 'fund_created',
-      description: 'Создан Фонд Тогами со стартовым балансом 15 000 000',
-      amount: TOGAMI_FUND_START_BALANCE,
-    });
-  };
-
   if (!fund) {
-    // p-treasury всегда должен быть в БД. Эта ветка останется только если нет seed.
     return (
       <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-4">
         <div className="glass-strong gold-border p-5">
@@ -88,9 +87,10 @@ export default function TogamiPage() {
   }
 
   return (
-    <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-4 animate-fade-in">
+    <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-3 animate-fade-in">
+      {/* Баланс */}
       <div className="glass-strong gold-border p-5">
-        <div className="text-[10px] uppercase tracking-widest text-gold/70">Капитал Бьякуи</div>
+        <div className="text-[10px] uppercase tracking-widest text-gold/70">📉 Куда уходят минусовые балансы</div>
         <h1 className="font-heading text-2xl font-bold text-gradient-gold mt-1">Фонд Тогами</h1>
         <Yen amount={fund.balance} className="text-3xl text-gold mt-2" iconClass="w-6 h-6" />
         {byakuya && (
@@ -99,39 +99,48 @@ export default function TogamiPage() {
             <span className="text-xs">Куратор: <b>{byakuya.display_name}</b></span>
           </div>
         )}
+        <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">
+          Когда игрок уходит в большой минус во время игры, средства поступают в Фонд.
+          Из него же выдаются кредиты Кируми и крупные выплаты.
+        </p>
       </div>
 
-      {/* Долги перед Фондом */}
-      <div className="glass p-4">
-        <div className="section-title text-sm mb-2">📜 Активные долги перед Фондом</div>
-        {fundDebts.length === 0 ? (
-          <div className="text-xs text-muted-foreground italic">Нет активных долгов.</div>
-        ) : (
+      {/* Топ должников Фонду */}
+      {topFundDebtors.length > 0 && (
+        <div className="glass p-4">
+          <div className="section-title text-sm mb-2">⚠️ Должники Фонду</div>
           <div className="space-y-1.5">
-            {fundDebts.map(d => {
-              const debtor = state.participants.find(p => p.id === d.debtor_id);
+            {topFundDebtors.map(([id, amount]) => {
+              const p = state.participants.find(x => x.id === id);
               return (
-                <div key={d.id} className="flex items-center gap-2 p-2 rounded-xl bg-card/40 text-xs">
-                  {debtor && <CharacterIcon participant={debtor} size="xs" ringless />}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold truncate">{debtor?.display_name ?? d.debtor_id}</div>
-                    <div className="text-[10px] text-muted-foreground truncate">{d.description ?? ''}</div>
-                  </div>
-                  <Yen amount={d.amount} className="text-xs" iconClass="w-3 h-3" />
-                  {d.status === 'overdue' && <span className="text-red-300 text-[10px]">просрочен</span>}
-                  {canManage && (
-                    <DebtActions debt={d} />
-                  )}
-                </div>
+                <Link key={id} href={`/profile/${id}`} className="flex items-center gap-2 p-2 rounded-xl bg-card/40 hover:bg-card/60 transition text-xs">
+                  {p && <CharacterIcon participant={p} size="xs" ringless />}
+                  <span className="flex-1 truncate font-bold">{p?.display_name ?? id}</span>
+                  <Yen amount={amount} className="text-red-300" iconClass="w-3 h-3" />
+                </Link>
               );
             })}
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Низкие балансы */}
+      <div className="glass p-4">
+        <div className="section-title text-sm mb-2">🔻 Игроки с худшим балансом</div>
+        <div className="space-y-1">
+          {lowBalancePlayers.map(p => (
+            <Link key={p.id} href={`/profile/${p.id}`} className="flex items-center gap-2 p-1.5 rounded-xl bg-card/30 hover:bg-card/50 transition text-xs">
+              <CharacterIcon participant={p} size="xs" ringless />
+              <span className="flex-1 truncate">{p.display_name}</span>
+              <Yen amount={p.balance} className={cn('text-[11px]', p.balance < 100_000 ? 'text-red-300' : 'text-muted-foreground')} iconClass="w-3 h-3" />
+            </Link>
+          ))}
+        </div>
       </div>
 
-      {/* История операций фонда */}
+      {/* История операций Фонда */}
       <div className="glass p-4">
-        <div className="section-title text-sm mb-2">📊 Последние операции</div>
+        <div className="section-title text-sm mb-2">📊 Операции Фонда</div>
         {history.length === 0 ? (
           <div className="text-xs text-muted-foreground italic">Операций пока нет.</div>
         ) : (
@@ -142,7 +151,7 @@ export default function TogamiPage() {
                 {h.amount != null && (
                   <Yen amount={h.amount} className={cn('text-[11px]', h.amount > 0 ? 'text-emerald-300' : 'text-red-300')} iconClass="w-3 h-3" />
                 )}
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                   {new Date(h.created_at).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
@@ -150,28 +159,30 @@ export default function TogamiPage() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
 
-function DebtActions({ debt }: { debt: any }) {
-  const sb = getSupabase();
-  const transferToMondo = async () => {
-    if (!sb) return;
-    if (!confirm(`Передать долг ${debt.id} Мондо на взыскание? Текущий кредитор Фонда Тогами останется, но в описании появится пометка.`)) return;
-    await sb.from('debts').update({
-      description: (debt.description ?? '') + ' · взыскатель: Мондо',
-    }).eq('id', debt.id);
-  };
-  const cancelDebt = async () => {
-    if (!sb) return;
-    if (!confirm('Отменить (списать) долг? Это безвозвратно.')) return;
-    await sb.from('debts').update({ status: 'cancelled' }).eq('id', debt.id);
-  };
-  return (
-    <div className="flex gap-1">
-      <button className="text-[10px] text-fuchsia-300 px-1.5 py-1 rounded-md bg-fuchsia-500/10 border border-fuchsia-500/30" onClick={transferToMondo}>→ Мондо</button>
-      <button className="text-[10px] text-red-300 px-1.5 py-1 rounded-md bg-red-500/10 border border-red-500/30" onClick={cancelDebt}>списать</button>
+      {/* Крупные провалы */}
+      <div className="glass p-4">
+        <div className="section-title text-sm mb-2">💥 Крупные операции (от 500k)</div>
+        {bigOps.length === 0 ? (
+          <div className="text-xs text-muted-foreground italic">Крупных операций пока нет.</div>
+        ) : (
+          <div className="space-y-1">
+            {bigOps.map(h => {
+              const p = state.participants.find(x => x.id === h.participant_id);
+              return (
+                <div key={h.id} className="flex items-center gap-2 p-1.5 rounded-xl bg-card/30 text-xs">
+                  {p && <CharacterIcon participant={p} size="xs" ringless />}
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">{p?.display_name ?? h.participant_id}</div>
+                    <div className="text-[10px] text-muted-foreground truncate">{h.description ?? h.action}</div>
+                  </div>
+                  <Yen amount={Math.abs(h.amount ?? 0)} className="text-[11px] text-amber-300" iconClass="w-3 h-3" />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

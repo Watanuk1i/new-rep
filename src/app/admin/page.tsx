@@ -8,8 +8,9 @@ import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen, YenIcon } from '@/components/ui/Yen';
 import { cn, getStatusLabel, SPRITE_SHEETS, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
-import { payoutFromTreasury } from '@/lib/store/tx';
+import { applyTransfer, payoutFromTreasury } from '@/lib/store/tx';
 import { BIG_GAMES } from '@/lib/superGames/catalog';
+import { KIRUMI_ID, MONDO_ID, TREASURY_ID, PET_LIMITS, PET_CANDIDATE_THRESHOLD } from '@/lib/loans/constants';
 import type { Participant, ParticipantStatus, PariMarket, Debt, Rumor, ContentBlock } from '@/lib/store/types';
 
 export const dynamic = 'force-dynamic';
@@ -1059,59 +1060,199 @@ function FullResetSection() {
 function DebtsAdmin() {
   const { state } = useStore();
   const sb = getSupabase();
-  const list = state.debts;
+  const [filter, setFilter] = useState<'all' | 'active' | 'overdue' | 'pet_candidate' | 'collection' | 'paid'>('all');
+  const debts = state.debts.filter(d => {
+    if (filter === 'all') return true;
+    if (filter === 'active') return d.status === 'active' || d.status === 'requested';
+    return d.status === filter;
+  }).sort((a, b) => {
+    const order = { pet_candidate: 0, overdue: 1, collection: 2, active: 3, requested: 4 } as Record<string, number>;
+    return (order[a.status] ?? 9) - (order[b.status] ?? 9);
+  });
 
   return (
     <div className="space-y-3">
-      <div className="text-xs text-muted">Все долги под наблюдением. Можно закрывать принудительно.</div>
-      {list.length === 0 ? (
+      <div className="text-xs text-muted">Долги под контролем Ведущего. Можно отдать Мондо или Кируми, списать или подтвердить.</div>
+      <div className="flex flex-wrap gap-1.5">
+        {[
+          { k: 'all', l: 'Все' },
+          { k: 'active', l: 'Активные' },
+          { k: 'overdue', l: 'Просрочка' },
+          { k: 'collection', l: 'Взыскание' },
+          { k: 'pet_candidate', l: '🐾 Кандидаты' },
+          { k: 'paid', l: 'Закрытые' },
+        ].map(o => (
+          <button key={o.k} onClick={() => setFilter(o.k as any)}
+            className={cn('px-2.5 py-1 rounded-md text-[10px]',
+              filter === o.k ? 'bg-gold/20 text-gold border border-gold/40' : 'bg-card/40 text-muted-foreground border border-white/5')}>
+            {o.l}
+          </button>
+        ))}
+      </div>
+      {debts.length === 0 ? (
         <div className="glass p-6 text-center text-sm text-muted-foreground">Долгов нет.</div>
-      ) : list.map(d => {
-        const debtor = state.participants.find(p => p.id === d.debtor_id);
-        const creditor = state.participants.find(p => p.id === d.creditor_id);
-        return (
-          <div key={d.id} className="glass p-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-muted">{d.status}</span>
-              <Yen amount={d.amount} className="text-sm text-gold" iconClass="w-3 h-3" />
-            </div>
-            <div className="text-xs">
-              <span className="text-red-300">{debtor?.display_name}</span>
-              <span className="text-muted"> → должен → </span>
-              <span className="text-gold">{creditor?.display_name}</span>
-            </div>
-            {d.description && <div className="text-[11px] text-muted-foreground mt-1">{d.description}</div>}
-            <div className="flex gap-2 mt-2">
-              {d.status === 'requested' && (
-                <button onClick={async () => {
-                  if (!sb) return;
-                  await sb.from('debts').update({ status: 'active' }).eq('id', d.id);
-                  if (debtor && creditor) {
-                    await sb.from('participants').update({ balance: debtor.balance + d.amount }).eq('id', debtor.id);
-                    await sb.from('participants').update({ balance: Math.max(0, creditor.balance - d.amount) }).eq('id', creditor.id);
-                  }
-                }} className="btn-success text-xs flex-1">Подтвердить</button>
-              )}
-              {d.status === 'active' && (
-                <button onClick={async () => {
-                  if (!sb) return;
-                  if (debtor && creditor) {
-                    await sb.from('participants').update({ balance: Math.max(0, debtor.balance - d.amount) }).eq('id', debtor.id);
-                    await sb.from('participants').update({ balance: creditor.balance + d.amount }).eq('id', creditor.id);
-                  }
-                  await sb.from('debts').update({ status: 'closed' }).eq('id', d.id);
-                }} className="btn-success text-xs flex-1">Закрыть</button>
-              )}
-              <button onClick={async () => {
-                if (!sb) return;
-                if (confirm('Удалить долг полностью?')) {
-                  await sb.from('debts').delete().eq('id', d.id);
-                }
-              }} className="btn-danger text-xs">✕</button>
-            </div>
-          </div>
-        );
-      })}
+      ) : debts.map(d => <AdminDebtCard key={d.id} debt={d} />)}
+    </div>
+  );
+}
+
+function AdminDebtCard({ debt: d }: { debt: Debt }) {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const debtor = state.participants.find(p => p.id === d.debtor_id);
+  const creditor = state.participants.find(p => p.id === d.creditor_id);
+  const [busy, setBusy] = useState(false);
+
+  const giveToMondo = async () => {
+    if (!sb) return;
+    if (!confirm(`Отдать долг Мондо на взыскание (+10% комиссия)?`)) return;
+    setBusy(true);
+    await sb.from('debts').update({ status: 'collection', collector_id: MONDO_ID }).eq('id', d.id);
+    await sb.from('notifications').insert({
+      id: uid('n'), recipient_id: MONDO_ID, type: 'debt_assigned',
+      title: 'Новый долг на взыскание',
+      body: `${debtor?.display_name ?? d.debtor_id} · ${d.amount.toLocaleString('ru-RU')} ¥`,
+      link_url: '/loans', is_read: false,
+    });
+    setBusy(false);
+  };
+
+  const giveToKirumi = async () => {
+    if (!sb) return;
+    if (!confirm(`Передать долг Кируми (она станет владельцем)?`)) return;
+    setBusy(true);
+    await sb.from('debts').update({ creditor_id: KIRUMI_ID, source: 'kirumi_loan' }).eq('id', d.id);
+    await sb.from('notifications').insert({
+      id: uid('n'), recipient_id: KIRUMI_ID, type: 'debt_assigned',
+      title: 'Долг передан Кируми',
+      body: `${debtor?.display_name ?? d.debtor_id} · ${d.amount.toLocaleString('ru-RU')} ¥`,
+      link_url: '/loans', is_read: false,
+    });
+    setBusy(false);
+  };
+
+  const writeOff = async () => {
+    if (!sb) return;
+    if (!confirm('Списать долг полностью? Долг будет помечен как cancelled.')) return;
+    setBusy(true);
+    await sb.from('debts').update({ status: 'cancelled' }).eq('id', d.id);
+    await sb.from('notifications').insert([
+      {
+        id: uid('n'), recipient_id: d.debtor_id, type: 'debt_cancelled',
+        title: 'Долг списан Ведущим',
+        body: `Долг ${d.amount.toLocaleString('ru-RU')} ¥ списан.`,
+        link_url: '/loans', is_read: false,
+      },
+    ]);
+    setBusy(false);
+  };
+
+  const markCandidate = async () => {
+    if (!sb) return;
+    if (d.amount < PET_CANDIDATE_THRESHOLD) {
+      alert(`Кандидат в Питомцы: только при долге от ${PET_CANDIDATE_THRESHOLD.toLocaleString('ru-RU')} ¥`);
+      return;
+    }
+    if (!confirm('Пометить долг как «Кандидат в Питомцы»? Долг сможет купить любой игрок и забрать должника как Питомца.')) return;
+    setBusy(true);
+    await sb.from('debts').update({ status: 'pet_candidate' }).eq('id', d.id);
+    await sb.from('notifications').insert({
+      id: uid('n'), recipient_id: d.debtor_id, type: 'pet_candidate',
+      title: 'Вы — кандидат в Питомцы',
+      body: `Долг ${d.amount.toLocaleString('ru-RU')} ¥ выставлен на выкуп. Кто его купит — станет вашим хозяином.`,
+      link_url: '/loans', is_read: false,
+    });
+    setBusy(false);
+  };
+
+  const buyOutAsAdmin = async () => {
+    if (!sb || !debtor) return;
+    const buyerId = prompt(`ID игрока-покупателя долга «Кандидат в Питомцы». Должник: ${debtor.display_name}`);
+    if (!buyerId) return;
+    const buyer = state.participants.find(p => p.id === buyerId);
+    if (!buyer) { alert('Игрок не найден'); return; }
+    if (buyer.balance < d.amount) {
+      if (!confirm(`У ${buyer.display_name} недостаточно средств (${buyer.balance.toLocaleString('ru-RU')} < ${d.amount.toLocaleString('ru-RU')}). Принудительно?`)) return;
+    }
+    const limit = PET_LIMITS[buyer.status] ?? 1;
+    const owns = state.participants.filter(p => p.pet_owner_id === buyer.id).length;
+    if (owns >= limit) {
+      if (!confirm(`У ${buyer.display_name} уже ${owns} Питомцев (лимит ${limit}). Превысить?`)) return;
+    }
+    setBusy(true);
+    // Списываем сумму долга, переводим её владельцу долга
+    await applyTransfer(buyer.id, d.creditor_id, d.amount, `Выкуп долга «Кандидат в Питомцы»`, '/loans');
+    // Меняем владельца долга и закрываем
+    await sb.from('debts').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', d.id);
+    // Должник → Питомец, hozyain — покупатель
+    await sb.from('participants').update({
+      status: 'pet',
+      pet_owner_id: buyer.id,
+    }).eq('id', d.debtor_id);
+    await sb.from('notifications').insert([
+      { id: uid('n'), recipient_id: d.debtor_id, type: 'pet_assigned',
+        title: 'Вас сделали Питомцем',
+        body: `${buyer.display_name} выкупил ваш долг и стал вашим хозяином.`,
+        link_url: '/profile/' + d.debtor_id, is_read: false },
+      { id: uid('n'), recipient_id: buyer.id, type: 'pet_assigned',
+        title: 'Новый Питомец',
+        body: `Вы выкупили долг ${debtor.display_name} и теперь его хозяин.`,
+        link_url: '/profile/' + d.debtor_id, is_read: false },
+    ]);
+    setBusy(false);
+  };
+
+  const remove = async () => {
+    if (!sb) return;
+    if (!confirm('Удалить долг полностью?')) return;
+    await sb.from('debts').delete().eq('id', d.id);
+  };
+
+  const confirmRequested = async () => {
+    if (!sb || !debtor || !creditor) return;
+    await sb.from('debts').update({ status: 'active' }).eq('id', d.id);
+    await applyTransfer(creditor.id, debtor.id, d.amount, `Выдача займа: ${d.description ?? ''}`, '/loans');
+  };
+
+  return (
+    <div className={cn('glass p-3 border',
+      d.status === 'overdue' && 'border-red-500/40',
+      d.status === 'collection' && 'border-fuchsia-500/40',
+      d.status === 'pet_candidate' && 'border-amber-500/60',
+      d.status === 'paid' && 'border-emerald-500/40 opacity-70',
+      d.status === 'cancelled' && 'opacity-50',
+    )}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-muted">{d.status} · день {d.due_day ?? '?'}</span>
+        <Yen amount={d.amount} className="text-sm text-gold" iconClass="w-3 h-3" />
+      </div>
+      <div className="text-xs">
+        <span className="text-red-300">{debtor?.display_name ?? d.debtor_id}</span>
+        <span className="text-muted"> → должен → </span>
+        <span className="text-gold">{creditor?.display_name ?? d.creditor_id}</span>
+      </div>
+      {d.description && <div className="text-[11px] text-muted-foreground mt-1">{d.description}</div>}
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {d.status === 'requested' && (
+          <button onClick={confirmRequested} className="btn-success text-[10px]">✓ Подтвердить</button>
+        )}
+        {(d.status === 'active' || d.status === 'overdue') && (
+          <>
+            <button onClick={giveToMondo} disabled={busy} className="btn-secondary text-[10px]">→ Мондо</button>
+            <button onClick={giveToKirumi} disabled={busy} className="btn-secondary text-[10px]">→ Кируми</button>
+            {d.amount >= PET_CANDIDATE_THRESHOLD && (
+              <button onClick={markCandidate} disabled={busy} className="btn-danger text-[10px]">🐾 В питомцы</button>
+            )}
+          </>
+        )}
+        {d.status === 'pet_candidate' && (
+          <button onClick={buyOutAsAdmin} disabled={busy} className="btn-warning text-[10px]">🛒 Назначить хозяина</button>
+        )}
+        {d.status !== 'paid' && d.status !== 'cancelled' && (
+          <button onClick={writeOff} disabled={busy} className="btn-danger text-[10px]">✕ Списать</button>
+        )}
+        <button onClick={remove} className="btn-danger text-[10px] ml-auto">🗑️</button>
+      </div>
     </div>
   );
 }

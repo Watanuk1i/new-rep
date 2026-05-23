@@ -19,7 +19,7 @@ import {
   KIRUMI_ID, MONDO_ID, PEKO_ID, QUEEN_ID, TREASURY_ID,
   LOAN_NORMAL_RATE, LOAN_URGENT_RATE,
   OVERDUE_RATE, MONDO_COMMISSION_RATE,
-  PET_CANDIDATE_THRESHOLD,
+  PET_CANDIDATE_THRESHOLD, PET_LIMITS,
   loanReturnAmount, splitCollectionCommission,
 } from '@/lib/loans/constants';
 import type { Debt, LoanRequest, DebtCollectionNote } from '@/lib/store/types';
@@ -627,14 +627,55 @@ function DebtCard({
       alert(`Кандидат в Питомцы: только при долге от ${PET_CANDIDATE_THRESHOLD.toLocaleString('ru-RU')} ¥`);
       return;
     }
-    if (!confirm('Пометить как основание для Питомца? Финальное решение — Селестия.')) return;
+    if (!confirm('Пометить долг как «Кандидат в Питомцы»? Любой игрок сможет выкупить долг и стать хозяином должника.')) return;
     await sb.from('debts').update({ status: 'pet_candidate' }).eq('id', debt.id);
-    await sb.from('notifications').insert({
-      id: uid('n'), recipient_id: QUEEN_ID, type: 'pet_candidate',
-      title: 'Кандидат в Питомцы',
-      body: `${debtor?.display_name ?? debt.debtor_id} · долг ${debt.amount.toLocaleString('ru-RU')} ¥`,
-      link_url: '/loans', is_read: false,
-    });
+    await sb.from('notifications').insert([
+      { id: uid('n'), recipient_id: QUEEN_ID, type: 'pet_candidate',
+        title: 'Кандидат в Питомцы',
+        body: `${debtor?.display_name ?? debt.debtor_id} · долг ${debt.amount.toLocaleString('ru-RU')} ¥`,
+        link_url: '/loans', is_read: false },
+      { id: uid('n'), recipient_id: debt.debtor_id, type: 'pet_candidate',
+        title: 'Вы — кандидат в Питомцы',
+        body: `Ваш долг ${debt.amount.toLocaleString('ru-RU')} ¥ выставлен на выкуп.`,
+        link_url: '/loans', is_read: false },
+    ]);
+  };
+
+  const buyOutAsPet = async () => {
+    if (!sb || !currentUser) return;
+    if (debt.status !== 'pet_candidate') return;
+    if (currentUser.id === debt.debtor_id) { alert('Нельзя выкупить свой долг'); return; }
+    const limit = PET_LIMITS[currentUser.status] ?? 1;
+    const owns = state.participants.filter(p => p.pet_owner_id === currentUser.id).length;
+    if (owns >= limit) {
+      alert(`У вас уже ${owns} Питомцев (лимит ${limit}).`);
+      return;
+    }
+    if (currentUser.balance < debt.amount) {
+      alert(`Недостаточно средств. Нужно ${debt.amount.toLocaleString('ru-RU')} ¥`);
+      return;
+    }
+    if (!confirm(`Выкупить долг за ${debt.amount.toLocaleString('ru-RU')} ¥ и сделать ${debtor?.display_name} своим Питомцем?`)) return;
+    setBusy(true);
+    const tx = await applyTransfer(currentUser.id, debt.creditor_id, debt.amount,
+      `Выкуп долга «Кандидат в Питомцы»: ${debtor?.display_name ?? ''}`, '/loans');
+    if (!tx.ok) { alert(tx.error || 'Ошибка'); setBusy(false); return; }
+    await sb.from('debts').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', debt.id);
+    await sb.from('participants').update({
+      status: 'pet',
+      pet_owner_id: currentUser.id,
+    }).eq('id', debt.debtor_id);
+    await sb.from('notifications').insert([
+      { id: uid('n'), recipient_id: debt.debtor_id, type: 'pet_assigned',
+        title: 'Вас сделали Питомцем',
+        body: `${currentUser.display_name} выкупил ваш долг и стал вашим хозяином.`,
+        link_url: '/profile/' + debt.debtor_id, is_read: false },
+      { id: uid('n'), recipient_id: QUEEN_ID, type: 'pet_assigned',
+        title: 'Новый Питомец',
+        body: `${debtor?.display_name} → Питомец ${currentUser.display_name}`,
+        link_url: '/profile/' + debt.debtor_id, is_read: false },
+    ]);
+    setBusy(false);
   };
 
   const cancelDebt = async () => {
@@ -771,6 +812,12 @@ function DebtCard({
               <button onClick={repayFull} disabled={busy} className="btn-success text-[10px]">✓ Погасить полностью</button>
               <button onClick={repayPart} disabled={busy} className="btn-secondary text-[10px]">Частично</button>
             </>
+          )}
+          {/* Выкуп долга «Кандидат в Питомцы» — доступен любому игроку, кроме должника */}
+          {debt.status === 'pet_candidate' && currentUser && currentUser.id !== debt.debtor_id && isPlayer(currentUser) && (
+            <button onClick={buyOutAsPet} disabled={busy} className="btn-warning text-[10px]">
+              🐾 Выкупить и стать хозяином
+            </button>
           )}
           {/* Кируми / владелец долга / админ */}
           {(forKirumi || isOwner || isAdmin) && (

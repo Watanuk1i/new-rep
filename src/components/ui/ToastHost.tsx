@@ -47,6 +47,12 @@ const ICONS: Record<string, string> = {
   help_request: '🆘',
   help_request_urgent: '🚨',
   rumor_closed: '👁️',
+  kirumi_contract: '📜',
+  contract_signed: '✓',
+  contract_breached: '⚠️',
+  contract_completed: '🤝',
+  pet_assigned: '🐾',
+  debt_cancelled: '✕',
 };
 
 const TOAST_DURATION_MS = 12_000; // 12 секунд видно
