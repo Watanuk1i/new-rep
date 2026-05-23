@@ -112,10 +112,13 @@ export function KokichiInfluencePanel({ game }: Props) {
       kokichi_courier_swap_used: true,
       kokichi_old_smuggler_id: round.smuggler_id ?? null,
       smuggler_id: null,
+      // Возвращаем фазу в выбор Контрабандиста, чтобы команда могла выбрать другого.
+      status: 'selecting_smuggler',
     };
     await patchState(game.id, {
       rounds: newRounds,
       kokichi_courier_swap_used: true,
+      status: 'selecting_smuggler',
     });
     await pushEvent('Кокичи: Смена курьера',
       `Команда ${round.smuggler_team} должна выбрать другого Контрабандиста.`, link);

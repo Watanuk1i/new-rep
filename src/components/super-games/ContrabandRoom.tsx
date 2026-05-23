@@ -89,7 +89,10 @@ function teamOf(playerId: string, st: ContrabandState): ContrabandTeam | null {
 
 export function ContrabandRoom({ game }: { game: SuperGame }) {
   const { state, currentUser, role } = useStore();
-  const isAdmin = role === 'gm' || role === 'queen';
+  // Кокичи (p-kokichi) — куратор Контрабанды и имеет права админа внутри игры:
+  // запускать раунды, раскрывать результат, выбирать Контрабандиста/Таможенника и т.д.
+  const isKokichiUser = !!currentUser && currentUser.id === 'p-kokichi';
+  const isAdmin = role === 'gm' || role === 'queen' || isKokichiUser;
   const cb = getState(game);
 
   const participants = (game.participant_ids || [])
