@@ -14,7 +14,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import {
   chargeToTreasury, payoutFromTreasury, placeSeatBid, transferBetweenPlayers, TREASURY_ID,
 } from '@/lib/store/tx';
-import { Revolver, BulletIcon } from './Revolver';
+import { Revolver, BulletIcon, LoadingRevolver } from './Revolver';
 import type {
   SuperGame, NineBulletsState, NineBulletsRound, NineBulletsBid, NineBulletsShot,
   Bullet, Occupant, Participant,
@@ -287,26 +287,20 @@ function LoadingPhase({
   if (isLoader && !alreadySaved) {
     return (
       <div className="glass-strong gold-border p-4 space-y-3">
-        <div className="text-[10px] uppercase tracking-widest text-amber-300">🔫 Зарядка барабана</div>
-        <div className="text-xs text-muted-foreground">
-          Расставьте <strong className="text-red-300">3 красных</strong> и <strong className="text-blue-300">6 синих</strong> патронов.
-          Никто не увидит порядок — только вы.
+        <div className="text-[10px] uppercase tracking-widest text-amber-300 text-center">🔫 Зарядка барабана</div>
+        <div className="text-xs text-muted-foreground text-center">
+          Кликайте по слотам — переключаете между <strong className="text-blue-300">синим</strong> и <strong className="text-red-300">красным</strong> патроном.
+          Поставьте 3 красных и 6 синих. Порядок видите только вы.
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {draft.map((b, i) => (
-            <button key={i} onClick={() => toggle(i)}
-              className={cn('aspect-square rounded-xl border-2 flex flex-col items-center justify-center gap-1 active:scale-95',
-                b === 'red'
-                  ? 'bg-red-500/15 border-red-500/50'
-                  : 'bg-blue-500/15 border-blue-500/50')}>
-              <BulletIcon kind={b} size={32} />
-              <span className="text-[10px] font-mono text-muted">слот {i + 1}</span>
-            </button>
-          ))}
+
+        {/* Барабан револьвера для зарядки */}
+        <div className="flex justify-center">
+          <LoadingRevolver draft={draft} onToggle={toggle} size={260} />
         </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className={cn(reds === 3 ? 'text-emerald-300' : 'text-red-300')}>Красных: {reds}/3</span>
-          <span className={cn(blues === 6 ? 'text-emerald-300' : 'text-blue-300')}>Синих: {blues}/6</span>
+
+        <div className="flex items-center justify-around text-xs">
+          <span className={cn(reds === 3 ? 'text-emerald-300' : 'text-red-300')}>🔴 Красных: {reds}/3</span>
+          <span className={cn(blues === 6 ? 'text-emerald-300' : 'text-blue-300')}>🔵 Синих: {blues}/6</span>
         </div>
         <button onClick={save} disabled={!valid || busy} className="btn-primary w-full">
           {busy ? '...' : valid ? '🔒 Подтвердить зарядку' : 'Расставьте 3 красных и 6 синих'}
@@ -433,6 +427,11 @@ function AuctionPhase({
 
 function SeatsGrid({ round }: { round: NineBulletsRound }) {
   const { state } = useStore();
+  // Карта попаданий: idx → 'red' | 'blue' | undefined (если ещё не раскрыто).
+  const shotByIdx = new Map<number, 'red' | 'blue'>();
+  for (const s of (round.shots ?? [])) {
+    if (s.bullet === 'red' || s.bullet === 'blue') shotByIdx.set(s.seat, s.bullet);
+  }
   return (
     <div className="glass p-3">
       <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-2">Места 1–9</div>
@@ -440,21 +439,46 @@ function SeatsGrid({ round }: { round: NineBulletsRound }) {
         {round.seats.map(s => {
           const occ = s.occupant;
           const player = occ && occ !== 'dummy' ? state.participants.find(p => p.id === occ) : null;
+          const shot = shotByIdx.get(s.idx);
+          // Цветовая обводка по результату выстрела:
+          // red — кровавая (боевой попал), blue — мягкая синяя зона (холостой)
+          const shotCls = shot === 'red'
+            ? 'bg-red-700/30 border-red-500/70 ring-2 ring-red-500/40 ring-offset-0'
+            : shot === 'blue'
+              ? 'bg-sky-700/20 border-sky-500/60'
+              : '';
           return (
-            <div key={s.idx} className={cn('rounded-xl p-2 border text-center min-h-[68px] flex flex-col justify-center',
-              !occ ? 'bg-card/30 border-white/8' :
-              occ === 'dummy' ? 'bg-gray-500/10 border-gray-500/30' :
-              'bg-emerald-500/10 border-emerald-500/30')}>
+            <div key={s.idx} className={cn('relative rounded-xl p-2 border text-center min-h-[68px] flex flex-col justify-center transition-all',
+              shot
+                ? shotCls
+                : !occ ? 'bg-card/30 border-white/8'
+                : occ === 'dummy' ? 'bg-gray-500/10 border-gray-500/30'
+                : 'bg-emerald-500/10 border-emerald-500/30')}>
+              {/* Иконка результата */}
+              {shot === 'red' && (
+                <div className="absolute top-1 right-1 text-base animate-pulse">🩸</div>
+              )}
+              {shot === 'blue' && (
+                <div className="absolute top-1 right-1 text-base">🛡</div>
+              )}
               <div className="text-[10px] text-muted-foreground">Место {s.idx}</div>
               {occ === 'dummy' ? (
                 <div className="text-xs font-bold text-gray-300 mt-0.5">🎯 Манекен</div>
               ) : player ? (
                 <div className="flex items-center justify-center gap-1 mt-0.5">
                   <CharacterIcon participant={player} size="xs" ringless />
-                  <span className="text-[11px] font-bold truncate">{player.display_name}</span>
+                  <span className={cn('text-[11px] font-bold truncate',
+                    shot === 'red' && 'text-red-200',
+                    shot === 'blue' && 'text-sky-200')}>{player.display_name}</span>
                 </div>
               ) : (
                 <div className="text-[11px] text-muted-foreground mt-0.5">свободно</div>
+              )}
+              {shot === 'red' && occ && occ !== 'dummy' && (
+                <div className="text-[9px] text-red-300 mt-0.5">−¥100k</div>
+              )}
+              {shot === 'blue' && occ && occ !== 'dummy' && (
+                <div className="text-[9px] text-sky-300 mt-0.5">+¥100k</div>
               )}
             </div>
           );

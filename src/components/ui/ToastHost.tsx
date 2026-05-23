@@ -44,6 +44,9 @@ const ICONS: Record<string, string> = {
   big_game_start: '🏟️',
   mini_game_start: '🎯',
   mini_game_progress: '🎯',
+  help_request: '🆘',
+  help_request_urgent: '🚨',
+  rumor_closed: '👁️',
 };
 
 const TOAST_DURATION_MS = 12_000; // 12 секунд видно

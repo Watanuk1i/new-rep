@@ -237,3 +237,93 @@ export function BulletIcon({ kind, size = 18, className }: { kind: Bullet | 'hid
     </svg>
   );
 }
+
+
+/**
+ * Барабан для фазы Зарядки. Заряжающий кликает по слотам и переключает
+ * патрон между red ↔ blue. В отличие от Revolver, здесь:
+ * - все 9 слотов всегда раскрыты (видны их цвета);
+ * - клик по слоту вызывает onToggle(i);
+ * - нет анимации прокрутки;
+ * - подсветка hover.
+ */
+export function LoadingRevolver({
+  draft, onToggle, size = 240, className,
+}: {
+  draft: Bullet[];
+  onToggle: (idx: number) => void;
+  size?: number;
+  className?: string;
+}) {
+  const slots = Array.from({ length: 9 }, (_, i) => i);
+  const radius = size * 0.36;
+  const slotRadius = size * 0.085;
+  const cx = size / 2;
+  const cy = size / 2;
+
+  return (
+    <div className={cn('relative', className)} style={{ width: size, height: size }}>
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        className="w-full h-full"
+        style={{ filter: 'drop-shadow(0 6px 20px rgba(0,0,0,0.6))' }}
+      >
+        <defs>
+          <radialGradient id="load-rev-body" cx="0.4" cy="0.35" r="0.85">
+            <stop offset="0%" stopColor="#3a3540" />
+            <stop offset="55%" stopColor="#1f1a26" />
+            <stop offset="100%" stopColor="#0e0a14" />
+          </radialGradient>
+          <radialGradient id="load-bullet-blue" cx="0.35" cy="0.3" r="0.85">
+            <stop offset="0%" stopColor="#7dd3fc" />
+            <stop offset="60%" stopColor="#2563eb" />
+            <stop offset="100%" stopColor="#0c1c4a" />
+          </radialGradient>
+          <radialGradient id="load-bullet-red" cx="0.35" cy="0.3" r="0.85">
+            <stop offset="0%" stopColor="#fda4a4" />
+            <stop offset="55%" stopColor="#e11d48" />
+            <stop offset="100%" stopColor="#4a0613" />
+          </radialGradient>
+        </defs>
+
+        <circle cx={cx} cy={cy} r={size * 0.48} fill="url(#load-rev-body)" stroke="#d4af37" strokeWidth={1.5} strokeOpacity={0.45} />
+
+        {/* Центр */}
+        <circle cx={cx} cy={cy} r={size * 0.07} fill="#0a0810" stroke="#d4af37" strokeOpacity={0.5} />
+        <circle cx={cx} cy={cy} r={size * 0.025} fill="#d4af37" />
+        <text x={cx} y={cy + 4} textAnchor="middle" fontSize={Math.max(8, size * 0.038)}
+          fill="#d4af37" opacity={0.5}>зарядка</text>
+
+        {slots.map(i => {
+          const seat = i + 1;
+          const angle = (-90 + i * 40) * (Math.PI / 180);
+          const x = cx + radius * Math.cos(angle);
+          const y = cy + radius * Math.sin(angle);
+          const bullet = draft[i] ?? 'blue';
+          const fill = bullet === 'red' ? 'url(#load-bullet-red)' : 'url(#load-bullet-blue)';
+          const stroke = bullet === 'red' ? '#fca5a5' : '#7dd3fc';
+          return (
+            <g key={i} style={{ cursor: 'pointer' }} onClick={() => onToggle(i)}>
+              <circle cx={x} cy={y} r={slotRadius + 3} fill="#0a0810" stroke="#000" strokeOpacity={0.6} />
+              <circle cx={x} cy={y} r={slotRadius}
+                fill={fill}
+                stroke={stroke}
+                strokeWidth={1.5}
+                style={{ transition: 'fill 0.2s ease' }} />
+              <text
+                x={x} y={y + slotRadius + 12}
+                textAnchor="middle"
+                fontFamily="Montserrat, sans-serif"
+                fontSize={Math.max(10, size * 0.05)}
+                fontWeight={700}
+                fill={bullet === 'red' ? '#fca5a5' : '#7dd3fc'}
+                opacity={0.85}>
+                {seat}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
