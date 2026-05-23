@@ -80,6 +80,12 @@ export function SideNav() {
           </>
         )}
 
+        {currentUser && (
+          <Link href="/help" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm bg-rose-500/10 border border-rose-500/30 text-rose-200 hover:bg-rose-500/20 mt-2">
+            <span>🆘</span><span>Позвать на помощь</span>
+          </Link>
+        )}
+
         {!currentUser && (
           <Link href="/login" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gold hover:bg-gold/10 mt-2">
             <span>➜</span><span>Войти</span>

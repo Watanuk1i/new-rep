@@ -207,21 +207,28 @@ export function TopBar() {
             )}
 
             {currentUser ? (
-              <button
-                onClick={() => {
-                  // logout + redirect → /login
-                  setDrawerOpen(false);
-                  // Используем store через хук в дочернем компоненте логики:
-                  // Здесь — прямой вызов через window для простоты в server-friendly коде
-                  const ev = new CustomEvent('app:logout');
-                  window.dispatchEvent(ev);
-                  router.push('/login');
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-300 active:bg-red-500/10 mt-4"
-              >
-                <span className="text-lg">🚪</span>
-                <span>Выйти</span>
-              </button>
+              <>
+                <Link
+                  href="/help"
+                  onClick={() => setDrawerOpen(false)}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium bg-rose-500/10 border border-rose-500/30 text-rose-200 active:bg-rose-500/20 mt-4"
+                >
+                  <span className="text-lg">🆘</span>
+                  <span>Позвать на помощь</span>
+                </Link>
+                <button
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    const ev = new CustomEvent('app:logout');
+                    window.dispatchEvent(ev);
+                    router.push('/login');
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-300 active:bg-red-500/10 mt-2"
+                >
+                  <span className="text-lg">🚪</span>
+                  <span>Выйти</span>
+                </button>
+              </>
             ) : null}
           </div>
         </div>
