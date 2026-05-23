@@ -145,6 +145,23 @@ export function MiniGameLobby({ game, state: gs, onStart, minPlayers = 2 }: Prop
       </div>
 
       <div className="glass-strong p-3 space-y-2">
+        {/* Пригласить — копировать ссылку */}
+        {(isCreator || isAdmin) && players.length < 6 && (
+          <button
+            onClick={() => {
+              try {
+                const url = `${window.location.origin}/super-games/${game.id}`;
+                navigator.clipboard.writeText(url);
+                alert('Ссылка скопирована — отправьте её игрокам');
+              } catch {
+                alert(`Ссылка на игру: ${window.location.origin}/super-games/${game.id}`);
+              }
+            }}
+            className="btn-secondary w-full text-xs">
+            🔗 Скопировать ссылку для приглашения
+          </button>
+        )}
+
         {/* Открытый сбор: любой может присоединиться к игре прямо отсюда */}
         {isOpen && !inGame && currentUser && isPlayer(currentUser) && (
           <button onClick={async () => {
