@@ -18,6 +18,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { transferBetweenPlayers, chargeToTreasury, payoutFromTreasury } from '@/lib/store/tx';
 import { PlayingCardView } from '@/components/ui/PlayingCardView';
 import { Coin3D, CoinSideLabel } from '@/components/ui/Coin3D';
+import { DieView } from '@/components/ui/DieView';
 import {
   type PlayingCard, makeDeck52, shuffle, bjHandScore, cardLabel,
 } from '@/lib/minigames/cards';
@@ -622,11 +623,6 @@ function DiceGame(p: GameProps) {
     }, 1100);
   };
 
-  const renderDie = (n?: number) => {
-    if (n === undefined) return '🎲';
-    return ['⚀','⚁','⚂','⚃','⚄','⚅'][n-1] || '🎲';
-  };
-
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
@@ -668,11 +664,18 @@ function DiceGame(p: GameProps) {
     return (
       <div className={cn('glass p-4 text-center', dice && 'gold-border')}>
         <div className="text-[10px] uppercase text-gold/70">{name}</div>
-        <div className="text-5xl mt-2 select-none" style={{ minHeight: '3rem' }}>
-          {display ? `${renderDie(display[0])} ${renderDie(display[1])}` : '🎲'}
+        <div className="flex items-center gap-3 justify-center mt-3" style={{ minHeight: '4rem' }}>
+          {display ? (
+            <>
+              <DieView value={display[0]} size="lg" rolling={rolling} />
+              <DieView value={display[1]} size="lg" rolling={rolling} />
+            </>
+          ) : (
+            <div className="text-5xl opacity-50">🎲</div>
+          )}
         </div>
         {dice && !rolling && (
-          <div className="font-mono text-xl font-bold mt-1">
+          <div className="font-mono text-xl font-bold mt-2">
             {dice[0]} + {dice[1]} = <span className="text-gold">{dice[0]+dice[1]}</span>
           </div>
         )}

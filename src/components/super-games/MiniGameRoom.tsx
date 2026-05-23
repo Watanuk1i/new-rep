@@ -23,6 +23,7 @@ import {
 } from '@/lib/store/tx';
 import { JokerDrawRoom } from './JokerDrawRoom';
 import { MiniGameLobby, isInLobby } from './MiniGameLobby';
+import { DieView } from '@/components/ui/DieView';
 import {
   TREASURY_FEE_RATE, applyTreasuryFee,
   spinRedBlack, findUniqueMax,
@@ -492,8 +493,8 @@ function LiarDiceRoom({ game }: { game: SuperGame }) {
         <div className="glass p-3 space-y-2">
           <div className="text-[10px] uppercase tracking-widest text-gold/70">Ваши кубики</div>
           {myDice ? (
-            <div className="flex items-center gap-2 text-2xl">
-              {myDice.map((v, i) => <DieIcon key={i} value={v} />)}
+            <div className="flex items-center gap-3 justify-center my-2">
+              {myDice.map((v, i) => <DieView key={i} value={v} size="lg" />)}
             </div>
           ) : (
             <div className="text-[11px] text-muted-foreground italic">кубики розданы только участникам</div>
@@ -537,8 +538,8 @@ function LiarDiceRoom({ game }: { game: SuperGame }) {
                 <div key={p.id} className="flex items-center gap-2 p-1.5 rounded-xl bg-card/40 text-xs">
                   <CharacterIcon participant={p} size="xs" ringless />
                   <span className="flex-1 truncate">{p.display_name}</span>
-                  <span className="flex gap-1">
-                    {dice.map((v, i) => <DieIcon key={i} value={v} small />)}
+                  <span className="flex gap-1.5">
+                    {dice.map((v, i) => <DieView key={i} value={v} size="sm" />)}
                   </span>
                   {st.winner_id === p.id && <span className="text-emerald-300 text-[10px]">забрал банк</span>}
                 </div>
@@ -552,8 +553,8 @@ function LiarDiceRoom({ game }: { game: SuperGame }) {
 }
 
 function DieIcon({ value, small }: { value: number; small?: boolean }) {
-  const map: Record<number, string> = { 1: '⚀', 2: '⚁', 3: '⚂', 4: '⚃', 5: '⚄', 6: '⚅' };
-  return <span className={small ? 'text-base' : 'text-2xl'}>{map[value] ?? '?'}</span>;
+  // Устаревший компонент — оставлен для обратной совместимости. Используйте DieView.
+  return <DieView value={value} size={small ? 'xs' : 'md'} />;
 }
 
 function ClaimForm({
