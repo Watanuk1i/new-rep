@@ -69,8 +69,24 @@ ON CONFLICT (id) DO UPDATE SET balance = 1000000, status = 'player', is_active =
 
 UPDATE participants SET balance = 1000000, status = 'player', is_active = TRUE WHERE id = 'p-8';
 
+-- Макото Наэги — активный (по запросу владельца)
+INSERT INTO participants (id, display_name, status, balance, reputation, sprite_sheet, sprite_y, is_active, is_registered)
+VALUES ('p-1', 'Макото Наэги', 'player', 1000000, 30, 1, 86, TRUE, FALSE)
+ON CONFLICT (id) DO UPDATE SET balance = 1000000, status = 'player', is_active = TRUE, display_name = 'Макото Наэги';
+
+-- Маки Харукава — новый активный
+INSERT INTO participants (id, display_name, status, balance, reputation, sprite_sheet, sprite_y, is_active, is_registered)
+VALUES ('p-maki', 'Маки Харукава', 'player', 1000000, 20, 2, 86, TRUE, FALSE)
+ON CONFLICT (id) DO UPDATE SET balance = 1000000, status = 'player', is_active = TRUE, display_name = 'Маки Харукава';
+
+-- Один активный Инкогнито
+INSERT INTO participants (id, display_name, status, balance, reputation, is_active, is_registered)
+VALUES ('p-incog-1', 'Инкогнито', 'player', 1000000, 0, TRUE, FALSE)
+ON CONFLICT (id) DO UPDATE SET is_active = TRUE, display_name = 'Инкогнито';
+
+-- Прочие старые персонажи — inactive (Макото p-1 убран из списка)
 UPDATE participants SET is_active = FALSE
- WHERE id IN ('p-1','p-2','p-3','p-4','p-5','p-6','p-7','p-9','p-10','p-12','p-13','p-togami-fund');
+ WHERE id IN ('p-2','p-3','p-4','p-5','p-6','p-7','p-9','p-10','p-12','p-13','p-togami-fund','p-incog-2','p-incog-3');
 
 -- ========== 2. ДОГОВОРЫ КИРУМИ ==========
 
