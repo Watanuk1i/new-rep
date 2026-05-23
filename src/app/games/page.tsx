@@ -15,12 +15,12 @@ const GAME_LABELS: Record<MiniGameType, { label: string; icon: string }> = {
   dice: { label: 'Кости', icon: '🎲' },
   high_card: { label: 'Старшая карта', icon: '🃏' },
   roulette: { label: 'Рулетка', icon: '🎰' },
-  slots: { label: 'Слоты', icon: '🍒' },
+  slots: { label: 'Камень-Ножницы-Бумага', icon: '✊' },
   blackjack: { label: '21 очко', icon: '🂡' },
   bluff_duel: { label: 'Блеф-дуэль', icon: '🎭' },
-  truth_or_bet: { label: 'Правда/ставка', icon: '❓' },
   find_pair: { label: 'Найди пару', icon: '🃟' },
   find_joker: { label: 'Найди Джокера', icon: '🎴' },
+  liars_bar: { label: 'Бар лжецов', icon: '🍷' },
 };
 
 export default function GamesPage() {

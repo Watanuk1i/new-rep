@@ -70,17 +70,35 @@ export function CreateMiniGameModal({ open, onClose }: Props) {
         pending_pass_from: null, pending_pass_to: null,
         actions: [], winner_ids: [], loser_ids: [], status: 'waiting_players',
       };
+    } else if (pickedType === 'liars_bar') {
+      initialState = {
+        status: 'waiting',
+        players: [],
+        table_card: 'A',
+        deck: [],
+        discard: [],
+        turn_player_id: null,
+        pending_play: null,
+        pending_roulette: null,
+        turn_count: 0,
+        round_index: 1,
+        bank: 0,
+        winner_id: null,
+        log: [],
+      };
     }
 
     await sb.from('super_games').insert({
       id: sgId,
       title: meta.label,
       type: pickedType,
-      description: `Малая игра: ${meta.label}`,
+      description: pickedType === 'liars_bar'
+        ? 'Бар лжецов · карты, заявления, обвинения, револьвер. Долги не создаются.'
+        : `Малая игра: ${meta.label}`,
       rules: '',
       stakes: stake > 0 ? `Ставка ${stake.toLocaleString('ru-RU')} с каждого участника` : null,
-      status: 'live',
-      participant_ids: allIds,
+      status: pickedType === 'liars_bar' ? 'scheduled' : 'live',
+      participant_ids: pickedType === 'liars_bar' ? [] : allIds,
       spectator_bets_enabled: false,
       entry_fee: stake,
       bank: 0,

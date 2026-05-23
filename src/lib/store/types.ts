@@ -24,7 +24,7 @@ export interface Participant {
   created_at?: string;
 }
 
-export type MiniGameType = 'dice' | 'high_card' | 'roulette' | 'slots' | 'blackjack' | 'bluff_duel' | 'truth_or_bet' | 'find_pair' | 'find_joker';
+export type MiniGameType = 'dice' | 'high_card' | 'roulette' | 'slots' | 'blackjack' | 'bluff_duel' | 'find_pair' | 'find_joker' | 'liars_bar';
 
 export interface GameChallenge {
   id: string;
@@ -727,7 +727,8 @@ export type MiniGameKind =
   | 'mini_blind_bid'
   | 'mini_liar_dice'
   | 'mini_despair_21'
-  | 'mini_ransom';
+  | 'mini_ransom'
+  | 'liars_bar';
 
 export interface MiniGameRedBlackState {
   stake: number;

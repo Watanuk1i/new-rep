@@ -24,6 +24,7 @@ import { EliteTrialRoom } from '@/components/super-games/EliteTrialRoom';
 import { EliteCandidateTrialRoom } from '@/components/super-games/EliteCandidateTrialRoom';
 import { ThroneRoom } from '@/components/super-games/ThroneRoom';
 import { MiniGameRoom } from '@/components/super-games/MiniGameRoom';
+import { LiarsBarRoom } from '@/components/super-games/LiarsBarRoom';
 import { BigGameInfo } from '@/components/super-games/BigGameInfo';
 import { getBigGame } from '@/lib/superGames/catalog';
 import type { Participant } from '@/lib/store/types';
@@ -94,6 +95,7 @@ export default function SuperGameDetailPage() {
       {game.type === 'elite_candidate_trial' && <EliteCandidateTrialRoom game={game} />}
       {game.type === 'rebellion'        && <RebellionRoom game={game} />}
       {game.type === 'throne_celestia'  && <ThroneRoom game={game} />}
+      {game.type === 'liars_bar'        && <LiarsBarRoom game={game} />}
       {game.type.startsWith('mini_')    && <MiniGameRoom game={game} />}
 
       {/* Базовое управление — для не-live типов */}
@@ -108,7 +110,7 @@ function isLiveType(t: string): boolean {
   return t === 'minority_rule' || t === 'nine_bullets' || t === 'card_ship'
     || t === 'royal_roulette' || t === 'contraband' || t === 'debt_tower'
     || t === 'debt_auction' || t === 'elite_trial' || t === 'elite_candidate_trial'
-    || t === 'rebellion' || t === 'throne_celestia' || t.startsWith('mini_');
+    || t === 'rebellion' || t === 'throne_celestia' || t === 'liars_bar' || t.startsWith('mini_');
 }
 
 function GameHeader({ game }: { game: any }) {

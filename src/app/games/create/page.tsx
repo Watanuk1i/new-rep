@@ -14,12 +14,12 @@ const GAMES: { key: MiniGameType; label: string; icon: string }[] = [
   { key: 'dice', label: 'Кости', icon: '🎲' },
   { key: 'high_card', label: 'Старшая карта', icon: '🃏' },
   { key: 'roulette', label: 'Рулетка', icon: '🎰' },
-  { key: 'slots', label: 'Слоты', icon: '🍒' },
+  { key: 'slots', label: 'Камень-Ножницы-Бумага', icon: '✊' },
   { key: 'blackjack', label: '21 очко', icon: '🂡' },
   { key: 'bluff_duel', label: 'Блеф-дуэль', icon: '🎭' },
-  { key: 'truth_or_bet', label: 'Правда/ставка', icon: '❓' },
   { key: 'find_pair', label: 'Найди пару', icon: '🃟' },
   { key: 'find_joker', label: 'Найди Джокера', icon: '🎴' },
+  { key: 'liars_bar', label: 'Бар лжецов', icon: '🍷' },
 ];
 
 export default function CreateGamePage() {
