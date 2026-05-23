@@ -61,7 +61,7 @@ export function CreateMiniGameModal({ open, onClose }: Props) {
     if (pickedType === 'mini_red_black') {
       initialState = { stake, fee_paid: {}, choices: {}, result: null, winner_ids: [], status: 'waiting_players' };
     } else if (pickedType === 'mini_blind_bid') {
-      initialState = { fee_paid: {}, bids: {}, status: 'active', winner_id: null };
+      initialState = { fee_paid: {}, bids: {}, status: 'waiting_players', winner_id: null };
     } else if (pickedType === 'mini_liar_dice') {
       initialState = { stake, fee_paid: {}, dice: {}, turn_order: [], current_turn_idx: 0, claim: null, status: 'waiting_players' };
     } else if (pickedType === 'mini_despair_21') {

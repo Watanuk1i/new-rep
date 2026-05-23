@@ -115,12 +115,26 @@ async function startMiniGame(game: SuperGame) {
   const cur = (data.state ?? {}) as any;
   const stake = data.entry_fee ?? cur.stake ?? 0;
   const participants = (data.participant_ids ?? []) as string[];
+  const players = participants
+    .map((pid: string) => ({ id: pid })) as any as Participant[];
+
+  // Liar dice и 21 отчаяния — отдельная логика (списание + раздача)
+  if (data.type === 'mini_liar_dice') {
+    const { data: parts } = await sb.from('participants').select('*').in('id', participants);
+    await collectStakesAndDeal(game, (parts ?? []) as Participant[], stake);
+    return;
+  }
+  if (data.type === 'mini_despair_21') {
+    const { data: parts } = await sb.from('participants').select('*').in('id', participants);
+    await collectStakesAndDeal21(game, (parts ?? []) as Participant[], stake);
+    return;
+  }
+
   const link = `/super-games/${game.id}`;
   const feePaid: Record<string, number> = { ...(cur.fee_paid ?? {}) };
   let added = 0;
 
-  // Собираем ставки сразу при старте — кроме liar_dice/despair_21 (там нужна особая раздача)
-  // и blind_bid (там ставка = выбор суммы каждым игроком).
+  // Сразу собираем ставки для red_black и mini_joker
   const collectImmediately = ['mini_red_black', 'mini_joker'];
   if (stake > 0 && collectImmediately.includes(data.type)) {
     for (const pid of participants) {
@@ -474,13 +488,6 @@ function LiarDiceRoom({ game }: { game: SuperGame }) {
     <div className="space-y-3">
       <MiniHeader game={game} title="🎲 Лжец на кубиках" stake={stake} />
 
-      <StakesBlock
-        game={game} players={players} feePaid={st.fee_paid ?? {}}
-        stake={stake} isAdmin={isAdmin}
-        onCollect={() => collectStakesAndDeal(game, players, stake)}
-        onCancel={() => cancelMiniRefund(game, players, st.fee_paid ?? {})}
-      />
-
       {allPaid && !finished && st.status !== 'cancelled' && (
         <div className="glass p-3 space-y-2">
           <div className="text-[10px] uppercase tracking-widest text-gold/70">Ваши кубики</div>
@@ -682,13 +689,6 @@ function Despair21Room({ game }: { game: SuperGame }) {
   return (
     <div className="space-y-3">
       <MiniHeader game={game} title="🂡 21 отчаяния" stake={stake} />
-
-      <StakesBlock
-        game={game} players={players} feePaid={st.fee_paid ?? {}}
-        stake={stake} isAdmin={isAdmin}
-        onCollect={() => collectStakesAndDeal21(game, players, stake)}
-        onCancel={() => cancelMiniRefund(game, players, st.fee_paid ?? {})}
-      />
 
       {allPaid && !finished && st.status !== 'cancelled' && (
         <div className="glass p-3 space-y-2">
