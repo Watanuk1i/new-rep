@@ -109,6 +109,34 @@ export default function HomePage() {
         </section>
       )}
 
+      {/* Претенденты в Элиту: игроки с балансом 3M+ или репутацией 70+ */}
+      {(() => {
+        const candidates = players.filter(p =>
+          p.is_active && p.status === 'player' &&
+          (p.balance >= 3_000_000 || p.reputation >= 70)
+        );
+        if (candidates.length === 0) return null;
+        return (
+          <section>
+            <h2 className="section-title text-base mb-2 px-1"><span>🌟</span> Претенденты в Элиту</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {candidates.map(p => (
+                <Link key={p.id} href={`/profile/${p.id}`}
+                  className="glass p-3 flex items-center gap-2 active:scale-[0.99]">
+                  <CharacterIcon participant={p} size="sm" ringless />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-sm truncate">{p.display_name}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      рейтинг {p.reputation}/100
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
+
       {/* Рейтинг — отступы между карточками */}
       <section>
         <div className="flex items-center justify-between mb-2 px-1">

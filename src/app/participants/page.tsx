@@ -8,11 +8,12 @@ import { Yen } from '@/components/ui/Yen';
 import { cn, isPlayer } from '@/lib/utils';
 
 const FILTERS = [
-  { key: 'all', label: 'Все', icon: '◉' },
-  { key: 'player', label: 'Игроки', icon: '✦' },
-  { key: 'pet', label: 'Питомцы', icon: '🔗' },
-  { key: 'master', label: 'Хозяева', icon: '👤' },
-  { key: 'elite', label: 'Элита', icon: '👑' },
+  { key: 'all',       label: 'Все',         icon: '◉' },
+  { key: 'player',    label: 'Игроки',      icon: '✦' },
+  { key: 'candidate', label: 'Претенденты', icon: '🌟' },
+  { key: 'pet',       label: 'Питомцы',     icon: '🔗' },
+  { key: 'with_pet',  label: 'С Питомцем',  icon: '👤' },
+  { key: 'elite',     label: 'Элита',       icon: '👑' },
 ];
 
 const SORTS = [
@@ -32,7 +33,23 @@ export default function ParticipantsPage() {
 
   const list = useMemo(() => {
     let arr = all.filter(p => p.status !== 'queen');
-    if (filter !== 'all') arr = arr.filter(p => p.status === filter);
+    if (filter === 'player') {
+      // Только обычные игроки, не претенденты, не Питомцы, не Элита
+      arr = arr.filter(p => p.status === 'player'
+        && !(p.balance >= 3_000_000 || p.reputation >= 70));
+    } else if (filter === 'candidate') {
+      // Претенденты в Элиту
+      arr = arr.filter(p => p.status === 'player'
+        && (p.balance >= 3_000_000 || p.reputation >= 70));
+    } else if (filter === 'pet') {
+      arr = arr.filter(p => p.status === 'pet');
+    } else if (filter === 'with_pet') {
+      // Игроки, у которых есть Питомец (упомянуты в pet_owner_id у других)
+      const ownerIds = new Set(arr.filter(p => p.status === 'pet' && p.pet_owner_id).map(p => p.pet_owner_id!));
+      arr = arr.filter(p => ownerIds.has(p.id));
+    } else if (filter === 'elite') {
+      arr = arr.filter(p => p.status === 'elite');
+    }
     return arr.sort((a, b) => {
       if (sortBy === 'balance') return b.balance - a.balance;
       if (sortBy === 'reputation') return b.reputation - a.reputation;

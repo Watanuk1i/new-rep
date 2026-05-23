@@ -316,7 +316,6 @@ function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
           {[
             { v: 'player', label: 'Игрок' },
             { v: 'pet', label: 'Питомец' },
-            { v: 'master', label: 'Хозяин' },
             { v: 'elite', label: 'Элита' },
             { v: 'queen', label: 'Королева' },
             { v: 'collector', label: 'Коллектор' },

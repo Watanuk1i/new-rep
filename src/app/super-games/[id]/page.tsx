@@ -119,16 +119,30 @@ function GameHeader({ game }: { game: any }) {
 }
 
 function ParticipantsBlock({ game, isAdmin }: { game: any; isAdmin: boolean }) {
-  const { state } = useStore();
+  const { state, currentUser } = useStore();
   const sb = getSupabase();
   const participants = (game.participant_ids || [])
     .map((pid: string) => state.participants.find(p => p.id === pid))
     .filter(Boolean) as Participant[];
   const canEdit = isAdmin && game.status === 'scheduled';
+  const isParticipant = !!currentUser && (game.participant_ids || []).includes(currentUser.id);
+  const isSpectator = !isAdmin && !isParticipant && currentUser;
 
   return (
     <div className="glass p-4">
-      <div className="section-title text-sm mb-3">👥 Участники · {participants.length}</div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="section-title text-sm">👥 Участники · {participants.length}</div>
+        {isSpectator && (
+          <span className="status-badge text-[10px] bg-blue-500/15 text-blue-300 border-blue-500/30">
+            👁️ зритель
+          </span>
+        )}
+        {isParticipant && (
+          <span className="status-badge text-[10px] bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
+            ✓ вы участвуете
+          </span>
+        )}
+      </div>
       {participants.length === 0 ? (
         <p className="text-xs text-muted-foreground">Пока нет участников.</p>
       ) : (

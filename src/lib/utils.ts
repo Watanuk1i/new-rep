@@ -24,7 +24,8 @@ export function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     player: 'Игрок',
     pet: 'Питомец',
-    master: 'Хозяин',
+    master: 'Игрок · с Питомцем',
+    candidate: 'Претендент',
     elite: 'Элита',
     queen: 'Королева',
     gm: 'Ведущий',
@@ -39,6 +40,7 @@ export function getStatusColor(status: string): string {
     player: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
     pet: 'bg-red-500/15 text-red-300 border-red-500/30',
     master: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+    candidate: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
     elite: 'bg-gold/15 text-gold border-gold/30',
     queen: 'bg-gradient-to-r from-gold/25 to-amber-500/25 text-gold-light border-gold/50',
     gm: 'bg-white/10 text-white/80 border-white/20',

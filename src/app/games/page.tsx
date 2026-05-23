@@ -7,6 +7,7 @@ import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen } from '@/components/ui/Yen';
 import { cn } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
+import { CreateMiniGameModal } from '@/components/super-games/CreateMiniGameModal';
 import type { GameChallenge, MiniGameType } from '@/lib/store/types';
 import { useRouter } from 'next/navigation';
 
@@ -26,6 +27,7 @@ export default function GamesPage() {
   const { state, currentUser, notify } = useStore();
   const router = useRouter();
   const [tab, setTab] = useState<'open' | 'mine' | 'types'>('open');
+  const [miniOpen, setMiniOpen] = useState(false);
   const sb = getSupabase();
 
   // Открытые вызовы — все pending в которых текущий не creator
@@ -71,31 +73,46 @@ export default function GamesPage() {
 
   return (
     <div className="px-3 sm:px-4 py-4 max-w-2xl mx-auto space-y-4 animate-fade-in">
-      <Link href="/games/create" className="block">
-        <div className="relative glass-strong gold-border p-4 active:scale-[0.99] transition-transform">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-gold-light to-gold-dark flex items-center justify-center text-2xl">⚔️</div>
-            <div className="flex-1">
-              <div className="font-heading font-bold text-base">Создать вызов</div>
-              <div className="text-xs text-muted-foreground">Выбери игру, соперника и ставку</div>
+      {/* Первый ряд: 3 главные действия — Вызов / Малая игра / Игры на долг */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <Link href="/games/create" className="block">
+          <div className="glass-strong gold-border p-3 h-full active:scale-[0.99] transition-transform">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold-light to-gold-dark flex items-center justify-center text-xl shrink-0">⚔️</div>
+              <div className="flex-1 min-w-0">
+                <div className="font-heading font-bold text-sm">Создать вызов</div>
+                <div className="text-[10px] text-muted-foreground truncate">Выбери игру, соперника и ставку</div>
+              </div>
             </div>
-            <span className="text-gold/70">→</span>
           </div>
-        </div>
-      </Link>
+        </Link>
 
-      <Link href="/debt-games" className="block">
-        <div className="relative glass p-4 active:scale-[0.99] transition-transform border border-rose-500/30 bg-rose-500/5">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-700 to-fuchsia-900 flex items-center justify-center text-2xl">⚔️</div>
-            <div className="flex-1">
-              <div className="font-heading font-bold text-base text-rose-200">Игры на долг</div>
-              <div className="text-xs text-rose-200/70">Сцены вокруг долга: Кируми, Мондо, Пеко</div>
+        <button onClick={() => setMiniOpen(true)} className="block text-left">
+          <div className="glass p-3 h-full active:scale-[0.99] transition-transform border border-emerald-500/30 bg-emerald-500/5">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-700 to-emerald-900 flex items-center justify-center text-xl shrink-0">🎯</div>
+              <div className="flex-1 min-w-0">
+                <div className="font-heading font-bold text-sm text-emerald-200">Создать малую игру</div>
+                <div className="text-[10px] text-emerald-200/70 truncate">2–6 игроков, вы участвуете автоматически</div>
+              </div>
             </div>
-            <span className="text-rose-300/70">→</span>
           </div>
-        </div>
-      </Link>
+        </button>
+
+        <Link href="/debt-games" className="block">
+          <div className="glass p-3 h-full active:scale-[0.99] transition-transform border border-rose-500/30 bg-rose-500/5">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-700 to-fuchsia-900 flex items-center justify-center text-xl shrink-0">⚔️</div>
+              <div className="flex-1 min-w-0">
+                <div className="font-heading font-bold text-sm text-rose-200">Игры на долг</div>
+                <div className="text-[10px] text-rose-200/70 truncate">Кируми, Мондо, Пеко</div>
+              </div>
+            </div>
+          </div>
+        </Link>
+      </div>
+
+      <CreateMiniGameModal open={miniOpen} onClose={() => setMiniOpen(false)} />
 
       <div className="scroll-x">
         {[
