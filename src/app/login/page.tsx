@@ -77,12 +77,6 @@ export default function LoginPage() {
           </div>
           {error && <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{error}</div>}
           <button type="submit" disabled={busy} className="btn-primary w-full">{busy ? 'Вход...' : 'Войти'}</button>
-          <div className="text-[10px] text-muted text-center leading-relaxed pt-2 border-t border-white/5">
-            Тестовые аккаунты:<br />
-            <span className="text-gold">host / host_academy_2026</span> · Ведущий<br />
-            <span className="text-gold">queen / queen_celestia_2026</span> · Селестия<br />
-            Игроки: введите имя персонажа (любой пароль если не зарегистрирован).
-          </div>
         </form>
       ) : (
         <form onSubmit={handleRegister} className="glass-strong p-4 space-y-3">

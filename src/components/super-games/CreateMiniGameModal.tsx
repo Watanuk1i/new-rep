@@ -23,6 +23,7 @@ export function CreateMiniGameModal({ open, onClose }: Props) {
   const [pickedType, setPickedType] = useState<string>('mini_red_black');
   const [stake, setStake] = useState<number>(50_000);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [openCall, setOpenCall] = useState(false); // открытый сбор: любой может присоединиться
   const [jokerMode, setJokerMode] = useState<'quick' | 'long' | 'advanced'>('quick');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,10 +46,13 @@ export function CreateMiniGameModal({ open, onClose }: Props) {
   const create = async () => {
     setError(null);
     if (!sb) return;
-    // Создатель автоматически входит в игру
-    const allIds = isAdmin ? Array.from(selected) : [currentUser.id, ...Array.from(selected)];
-    if (allIds.length < meta.minPlayers) {
-      setError(`Нужно минимум ${meta.minPlayers} игроков (вы автоматически включены).`);
+    // Создатель автоматически входит в игру.
+    // openCall: только создатель в participant_ids, остальные присоединятся через /games.
+    const allIds = openCall
+      ? [currentUser.id]
+      : (isAdmin ? Array.from(selected) : [currentUser.id, ...Array.from(selected)]);
+    if (!openCall && allIds.length < meta.minPlayers) {
+      setError(`Нужно минимум ${meta.minPlayers} игроков (или включите «Открытый сбор»).`);
       return;
     }
     setBusy(true);
@@ -88,33 +92,53 @@ export function CreateMiniGameModal({ open, onClose }: Props) {
       };
     }
 
+    // Добавляем openCall в state, чтобы /games показывал «открытый сбор» и любой мог присоединиться
+    const initialStateWithOpen = { ...initialState, is_open: openCall };
+
     await sb.from('super_games').insert({
       id: sgId,
-      title: meta.label,
+      title: meta.label + (openCall ? ' · открытый сбор' : ''),
       type: pickedType,
       description: pickedType === 'liars_bar'
         ? 'Бар лжецов · карты, заявления, обвинения, револьвер. Долги не создаются.'
         : `Малая игра: ${meta.label}`,
       rules: '',
       stakes: stake > 0 ? `Ставка ${stake.toLocaleString('ru-RU')} с каждого участника` : null,
-      status: pickedType === 'liars_bar' ? 'scheduled' : 'live',
-      participant_ids: pickedType === 'liars_bar' ? [] : allIds,
+      // Новые игры всегда стартуют в `scheduled` — лобби с кнопкой готов.
+      status: 'scheduled',
+      participant_ids: allIds,
       spectator_bets_enabled: false,
       entry_fee: stake,
       bank: 0,
-      state: initialState,
+      state: initialStateWithOpen,
     });
 
     await sb.from('events').insert({
       id: uid('ev'),
       type: 'mini_game_start',
-      title: `Малая игра: ${meta.label}`,
-      body: `${currentUser.display_name} создал игру. Игроков: ${allIds.length}.`,
+      title: `Малая игра: ${meta.label}${openCall ? ' (открытый сбор)' : ''}`,
+      body: `${currentUser.display_name} создал игру. ${openCall ? 'Любой может присоединиться через раздел Игры.' : `Игроков: ${allIds.length}.`}`,
       link_url: `/super-games/${sgId}`,
       is_for_gm_only: false,
     });
 
-    if (allIds.length > 0) {
+    if (openCall) {
+      // Уведомление ВСЕМ активным игрокам кроме создателя
+      const targets = state.participants.filter(p => isPlayer(p) && p.is_active && p.id !== currentUser.id);
+      if (targets.length > 0) {
+        await sb.from('notifications').insert(
+          targets.map(t => ({
+            id: uid('n'),
+            recipient_id: t.id,
+            type: 'mini_game_invite',
+            title: `🎯 Открытый сбор: ${meta.label}`,
+            body: `${currentUser.display_name} собирает игру. Ставка: ${stake.toLocaleString('ru-RU')} ¥. Заходите!`,
+            link_url: `/games`,
+            is_read: false,
+          })),
+        );
+      }
+    } else if (allIds.length > 0) {
       await sb.from('notifications').insert(
         allIds.filter(id => id !== currentUser.id).map((pid: string) => ({
           id: uid('n'),
@@ -130,6 +154,7 @@ export function CreateMiniGameModal({ open, onClose }: Props) {
 
     setBusy(false);
     setSelected(new Set());
+    setOpenCall(false);
     onClose();
   };
 
@@ -203,6 +228,27 @@ export function CreateMiniGameModal({ open, onClose }: Props) {
         )}
 
         <div>
+          <button onClick={() => setOpenCall(!openCall)}
+            className={cn('w-full p-3 rounded-xl border-2 transition-all',
+              openCall ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200' : 'bg-card/40 border-white/10')}>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{openCall ? '🌍' : '🔒'}</span>
+              <div className="flex-1 text-left">
+                <div className="font-bold text-sm">
+                  {openCall ? 'Открытый сбор включён' : 'Открытый сбор'}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  {openCall
+                    ? 'Любой игрок присоединится со страницы Игры'
+                    : 'Включите чтобы все игроки увидели вашу игру в Вызовах'}
+                </div>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        {!openCall && (
+        <div>
           <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-1">
             Пригласить ({selected.size + (isAdmin ? 0 : 1)}/{meta.maxPlayers}, мин {meta.minPlayers})
           </div>
@@ -234,6 +280,7 @@ export function CreateMiniGameModal({ open, onClose }: Props) {
             </div>
           )}
         </div>
+        )}
 
         {error && (
           <div className="glass crimson-border p-2 text-xs text-red-300 text-center">{error}</div>

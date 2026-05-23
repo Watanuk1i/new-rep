@@ -143,13 +143,19 @@ export default function GamesPage() {
               <div className="space-y-2">
                 {miniSuperGames.map(g => {
                   const inGame = !!currentUser && (g.participant_ids || []).includes(currentUser.id);
+                  const isOpen = !!(g.state as any)?.is_open;
+                  const canJoin = !inGame && !!currentUser && isOpen
+                    && (g.participant_ids || []).length < 6
+                    && currentUser.balance >= (g.entry_fee ?? 0);
                   return (
-                    <Link key={g.id} href={`/super-games/${g.id}`}>
-                      <div className={cn('glass p-3 active:scale-[0.99]',
-                        g.status === 'live' ? 'border border-amber-500/30 bg-amber-500/5' : 'border border-emerald-500/20')}>
-                        <div className="flex items-center justify-between gap-2">
+                    <div key={g.id} className={cn('glass p-3',
+                      g.status === 'live' ? 'border border-amber-500/30 bg-amber-500/5' : 'border border-emerald-500/20')}>
+                      <Link href={`/super-games/${g.id}`}>
+                        <div className="flex items-center justify-between gap-2 active:scale-[0.99]">
                           <div className="flex-1 min-w-0">
-                            <div className="font-bold text-sm truncate">{g.title}</div>
+                            <div className="font-bold text-sm truncate">
+                              {isOpen ? '🌍 ' : '🔒 '}{g.title}
+                            </div>
                             <div className="text-[10px] text-muted-foreground">
                               {(g.participant_ids || []).length} игроков · {g.status === 'live' ? '🔴 в эфире' : '📅 сбор'}
                               {g.entry_fee ? ` · вход ${g.entry_fee.toLocaleString('ru-RU')} ¥` : ''}
@@ -157,11 +163,23 @@ export default function GamesPage() {
                           </div>
                           <span className={cn('text-[10px] px-2 py-1 rounded',
                             inGame ? 'bg-emerald-500/15 text-emerald-300' : 'bg-gold/15 text-gold')}>
-                            {inGame ? 'Вы внутри' : 'Заглянуть'}
+                            {inGame ? 'Вы внутри' : (g.status === 'live' ? '👁 Смотреть' : 'Заглянуть')}
                           </span>
                         </div>
-                      </div>
-                    </Link>
+                      </Link>
+                      {canJoin && (
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!sb || !currentUser) return;
+                            const newIds = [...(g.participant_ids || []), currentUser.id];
+                            await sb.from('super_games').update({ participant_ids: newIds }).eq('id', g.id);
+                          }}
+                          className="btn-primary w-full text-xs mt-2">
+                          + Присоединиться к игре
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>

@@ -996,8 +996,8 @@ function FullResetSection() {
             pet_owner_id: null,
             is_active,
           };
-          if (id === 'p-gm') updatePayload.password = 'host_academy_2026';
-          else if (id === 'p-queen') updatePayload.password = 'queen_celestia_2026';
+          if (id === 'p-gm') updatePayload.password = 'Tw1light_Throne_94';
+          else if (id === 'p-queen') updatePayload.password = 'Crimson_Veil_2099';
           else {
             // Все остальные → пароль null, регистрация снимается, чтобы можно было
             // зарегистрироваться заново с новым логином.
@@ -1010,7 +1010,7 @@ function FullResetSection() {
             id, display_name: name, status, balance, reputation,
             wins: 0, losses: 0, is_active,
             is_registered: id === 'p-gm' || id === 'p-queen',
-            password: id === 'p-gm' ? 'host_academy_2026' : id === 'p-queen' ? 'queen_celestia_2026' : null,
+            password: id === 'p-gm' ? 'Tw1light_Throne_94' : id === 'p-queen' ? 'Crimson_Veil_2099' : null,
           });
         }
       }

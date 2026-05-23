@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/StoreProvider';
 import { cn } from '@/lib/utils';
+import { getSupabase } from '@/lib/supabase/client';
 import { BIG_GAMES, getBigGame, type BigGameTemplate } from '@/lib/superGames/catalog';
 import { BigGameInfo } from '@/components/super-games/BigGameInfo';
 
@@ -29,6 +30,51 @@ export default function SuperGamesPage() {
   const [tab, setTab] = useState<'mine' | 'upcoming' | 'live' | 'archive'>('upcoming');
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const myId = currentUser?.id ?? null;
+  const isAdmin = role === 'gm' || role === 'queen';
+  const sb = getSupabase();
+
+  // Каталог открытых Больших игр (только админ может открывать)
+  const [unlocks, setUnlocks] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!sb) return;
+    let alive = true;
+    const load = async () => {
+      const { data } = await sb.from('big_game_unlocks').select('type, unlocked');
+      if (!alive) return;
+      const map: Record<string, boolean> = {};
+      for (const r of (data ?? [])) map[r.type] = !!r.unlocked;
+      setUnlocks(map);
+    };
+    load();
+    const ch = sb.channel('big-game-unlocks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'big_game_unlocks' }, load)
+      .subscribe();
+    return () => { alive = false; sb.removeChannel(ch); };
+  }, [sb]);
+
+  const toggleUnlock = async (type: string, current: boolean) => {
+    if (!sb || !isAdmin) return;
+    await sb.from('big_game_unlocks').upsert({
+      type, unlocked: !current,
+      unlocked_at: !current ? new Date().toISOString() : null,
+      unlocked_by: !current ? currentUser?.id : null,
+    });
+    if (!current) {
+      // Уведомление всем игрокам
+      const { data: players } = await sb.from('participants')
+        .select('id').eq('is_active', true).neq('status', 'gm').neq('status', 'treasury');
+      if (players && players.length > 0) {
+        await sb.from('notifications').insert(players.map((p: any) => ({
+          id: 'n-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          recipient_id: p.id,
+          type: 'big_game_invite',
+          title: '🏟️ Открыта Большая игра',
+          body: BIG_GAMES.find(g => g.type === type)?.label ?? type,
+          link_url: '/super-games', is_read: false,
+        })));
+      }
+    }
+  };
 
   // На странице Супер игр показываем ТОЛЬКО Большие игры. Малые (mini_*, liars_bar) живут на /games.
   const isBigGame = (t: string) => !t.startsWith('mini_') && t !== 'liars_bar';
@@ -124,18 +170,42 @@ export default function SuperGamesPage() {
       {/* 9 Больших игр — порядок по спецификации */}
       <section>
         <div className="divider-ornate my-3">✦ Девять Больших игр ✦</div>
+        {!isAdmin && BIG_GAMES.every(g => !unlocks[g.type]) && (
+          <div className="glass p-6 text-center">
+            <div className="text-3xl mb-2 opacity-50">🔒</div>
+            <p className="text-sm text-muted-foreground">Большие игры пока скрыты. Ведущий откроет их по одной.</p>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {BIG_GAMES.map((gt, idx) => (
-            <button key={gt.type} onClick={() => setSelectedType(gt.type)}
-              className="glass p-3 text-left active:scale-95 relative gold-border">
-              <span className="absolute top-1 right-1 text-[9px] font-bold uppercase tracking-wider text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-md">
-                #{idx + 1}
-              </span>
-              <div className="font-bold text-sm leading-tight pr-8">{gt.label}</div>
-              <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{gt.description}</div>
-              <div className="text-[10px] text-gold mt-1">👤 {gt.curatorName}</div>
-            </button>
-          ))}
+          {BIG_GAMES.map((gt, idx) => {
+            const isUnlocked = !!unlocks[gt.type];
+            // Не админ — скрываем закрытые
+            if (!isAdmin && !isUnlocked) return null;
+            return (
+              <div key={gt.type} className={cn('glass p-3 relative gold-border',
+                !isUnlocked && 'opacity-60')}>
+                <button onClick={() => setSelectedType(gt.type)} className="text-left w-full active:scale-95">
+                  <span className="absolute top-1 right-1 text-[9px] font-bold uppercase tracking-wider text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-md">
+                    #{idx + 1}
+                  </span>
+                  <div className="font-bold text-sm leading-tight pr-8 flex items-center gap-1">
+                    {!isUnlocked && '🔒 '}{gt.label}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{gt.description}</div>
+                  <div className="text-[10px] text-gold mt-1">👤 {gt.curatorName}</div>
+                </button>
+                {isAdmin && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleUnlock(gt.type, isUnlocked); }}
+                    className={cn('mt-2 w-full text-[10px] py-1.5 rounded-md font-bold',
+                      isUnlocked ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/40')}>
+                    {isUnlocked ? '✓ Открыта для всех — закрыть' : '🔒 Открыть для всех'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
