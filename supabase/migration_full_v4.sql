@@ -89,8 +89,9 @@ INSERT INTO participants (id, display_name, status, balance, reputation, is_acti
 VALUES ('p-incog-1', 'Инкогнито', 'player', 1000000, 0, TRUE, FALSE)
 ON CONFLICT (id) DO UPDATE SET is_active = TRUE, display_name = 'Инкогнито';
 
--- Прочие старые персонажи — inactive (Макото p-1 убран из списка)
-UPDATE participants SET is_active = FALSE
+-- Прочие старые персонажи — УДАЛЯЕМ совсем (по запросу владельца, они не числятся как игроки).
+-- Если есть FK-зависимости с CASCADE — удалятся каскадом.
+DELETE FROM participants
  WHERE id IN ('p-2','p-3','p-4','p-5','p-6','p-7','p-9','p-10','p-12','p-13','p-togami-fund','p-incog-2','p-incog-3');
 
 -- ========== 2. ДОГОВОРЫ КИРУМИ ==========

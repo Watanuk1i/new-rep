@@ -1148,20 +1148,13 @@ function FullResetSection() {
         ['p-kiibo',      'K1-B0',                    'player',   1_000_000,   10,  true],
         // Активный Инкогнито (один) — для скрытных вмешательств
         ['p-incog-1',    'Инкогнито',                'player',   1_000_000,   0,   true],
-        // Архивные / неактивные (Бьякуя по спеке только inactive)
-        ['p-2',          'Кёко Киригири',            'player',   1_500_000,   70,  false],
-        ['p-3',          'Бьякуя Тогами',            'player',   2_000_000,   80,  false],
-        ['p-4',          'Токо Фукава',              'player',   800_000,     40,  false],
-        ['p-5',          'Аой Асахина',              'player',   900_000,     65,  false],
-        ['p-6',          'Ясухиро Хагакуре',         'player',   600_000,     35,  false],
-        ['p-7',          'Сакура Огами',             'player',   1_200_000,   75,  false],
-        ['p-9',          'Саяка Майзоно',            'player',   1_100_000,   70,  false],
-        ['p-10',         'Чихиро Фуджисаки',         'player',   850_000,     60,  false],
-        ['p-12',         'Киётака Ишимару',          'player',   1_050_000,   65,  false],
-        ['p-13',         'Хифуми Ямада',             'player',   500_000,     30,  false],
-        ['p-incog-2',    'Инкогнито',                'player',   1_000_000,   0,   false],
-        ['p-incog-3',    'Инкогнито',                'player',   1_000_000,   0,   false],
       ];
+
+      // Удаляем устаревших персонажей которых больше нет в активном составе.
+      const obsoleteIds = ['p-2','p-3','p-4','p-5','p-6','p-7','p-9','p-10','p-12','p-13','p-togami-fund','p-incog-2','p-incog-3'];
+      for (const oldId of obsoleteIds) {
+        await sb.from('participants').delete().eq('id', oldId);
+      }
 
       for (const [id, name, status, balance, reputation, is_active] of seed) {
         // Если такого id нет — создаём; есть — обновляем.
