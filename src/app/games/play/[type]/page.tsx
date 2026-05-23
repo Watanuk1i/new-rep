@@ -28,6 +28,8 @@ import type { MiniGameType, GameChallenge, Participant } from '@/lib/store/types
 
 const LABELS: Record<MiniGameType, { label: string; icon: string }> = {
   dice:       { label: 'Кости',                   icon: '🎲' },
+  coin_flip:  { label: 'Монетка',                  icon: '🪙' },
+  parity:     { label: 'Чёт / Нечёт',              icon: '🔢' },
   high_card:  { label: 'Старшая карта',           icon: '🃏' },
   roulette:   { label: 'Рулетка',                 icon: '🎰' },
   slots:      { label: 'Камень-Ножницы-Бумага',   icon: '✊' },
@@ -99,6 +101,17 @@ interface ResultData {
   joker_deck?: PlayingCard[];
   joker_drawn?: { idx: number; card: PlayingCard; by: 'creator' | 'opponent' }[];
   joker_turn?: 'creator' | 'opponent';
+
+  // coin_flip — оба угадывают, потом подброс
+  coin_creator_pick?: 'heads' | 'tails';
+  coin_opponent_pick?: 'heads' | 'tails';
+  coin_result?: 'heads' | 'tails';
+
+  // parity — оба загадывают число 1..10, сумма чёт/нечёт
+  parity_creator_num?: number;
+  parity_opponent_num?: number;
+  parity_creator_pick?: 'even' | 'odd';
+  parity_opponent_pick?: 'even' | 'odd';
 
   // финал
   details?: string;
@@ -314,10 +327,12 @@ function PlayInner() {
   const phase: ResultData['phase'] = rd.phase || 'ready';
 
   if (phase === 'ready') {
+    const needsGm = !!(rd as any).needs_gm_approval;
     return (
       <div className="px-3 sm:px-4 py-4 max-w-md mx-auto space-y-4 animate-fade-in">
         {head}
-        <ReadyView challenge={challenge} isCreator={isCreator} rd={rd} gameType={type} />
+        {needsGm && <GmApprovalBanner challenge={challenge} />}
+        <ReadyView challenge={challenge} isCreator={isCreator} rd={rd} gameType={type} blocked={needsGm} />
       </div>
     );
   }
@@ -328,6 +343,8 @@ function PlayInner() {
       <div className="px-3 sm:px-4 py-4 max-w-md mx-auto space-y-4 animate-fade-in">
         {head}
         {type === 'dice'       && <DiceGame {...common} />}
+        {type === 'coin_flip'  && <CoinFlipGame {...common} />}
+        {type === 'parity'     && <ParityGame {...common} />}
         {type === 'high_card'  && <HighCardGame {...common} />}
         {type === 'roulette'   && <RouletteGame {...common} />}
         {type === 'slots'      && <RPSGame {...common} />}
@@ -373,11 +390,12 @@ function Header({ info, stake, otherName }: { info: { label: string; icon: strin
 // READY VIEW
 // ============================================================
 
-function ReadyView({ challenge, isCreator, rd, gameType }: {
+function ReadyView({ challenge, isCreator, rd, gameType, blocked }: {
   challenge: GameChallenge;
   isCreator: boolean;
   rd: ResultData;
   gameType: MiniGameType;
+  blocked?: boolean;
 }) {
   const sb = getSupabase();
   const myReady = isCreator ? !!rd.creator_ready : !!rd.opponent_ready;
@@ -468,9 +486,45 @@ function ReadyView({ challenge, isCreator, rd, gameType }: {
         <div>Вы: {myReady ? <span className="text-emerald-400">готовы ✓</span> : <span className="text-amber-300">не готовы</span>}</div>
         <div>Соперник: {otherReady ? <span className="text-emerald-400">готов ✓</span> : <span className="text-amber-300">не готов</span>}</div>
       </div>
-      <button onClick={press} disabled={myReady || busy} className={cn('btn-primary w-full', (myReady || busy) && 'opacity-50')}>
-        {myReady ? 'Жду соперника...' : '⚔️ Я готов'}
+      <button onClick={press} disabled={myReady || busy || blocked} className={cn('btn-primary w-full', (myReady || busy || blocked) && 'opacity-50')}>
+        {blocked ? '⏳ Ждём апрув ведущего' : myReady ? 'Жду соперника...' : '⚔️ Я готов'}
       </button>
+    </div>
+  );
+}
+
+function GmApprovalBanner({ challenge }: { challenge: GameChallenge }) {
+  const { role } = useStore();
+  const sb = getSupabase();
+  const [busy, setBusy] = useState(false);
+  const isGm = role === 'gm';
+
+  const approve = async () => {
+    if (!sb || busy) return;
+    setBusy(true);
+    await patchResult(sb, challenge.id, { needs_gm_approval: false } as any);
+    setBusy(false);
+  };
+  const reject = async () => {
+    if (!sb || busy) return;
+    if (!confirm('Отклонить вызов с большой ставкой?')) return;
+    setBusy(true);
+    await sb.from('challenges').update({ status: 'cancelled' }).eq('id', challenge.id);
+    setBusy(false);
+  };
+
+  return (
+    <div className="glass-strong gold-border p-4 text-center" style={{ background: 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(139,26,26,0.15) 100%)' }}>
+      <div className="text-[10px] uppercase tracking-widest text-gold/70">⏳ Большая ставка</div>
+      <div className="text-sm mt-1">Ставка <b className="text-gold">{challenge.stake_amount.toLocaleString('ru-RU')} ¥</b> требует подтверждения ведущего.</div>
+      {isGm ? (
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          <button onClick={approve} disabled={busy} className="btn-success">✓ Одобрить</button>
+          <button onClick={reject} disabled={busy} className="btn-danger">✕ Отклонить</button>
+        </div>
+      ) : (
+        <div className="text-[10px] text-amber-300/80 mt-2 animate-pulse">Уведомление отправлено</div>
+      )}
     </div>
   );
 }
@@ -1409,6 +1463,186 @@ function DemoMode({ type }: { type: MiniGameType }) {
         </div>
       ) : (
         <ResultCard won={result.won} details={result.details} stake={stake} />
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// COIN FLIP — оба выбирают, монетка подбрасывается
+// ============================================================
+
+function CoinFlipGame(p: GameProps) {
+  const { challenge, rd, isCreator, creator, opponent, sb, notify, addHistory, gameLabel, gameType } = p;
+  const [busy, setBusy] = useState(false);
+  const [flipping, setFlipping] = useState(false);
+
+  const myPick  = isCreator ? rd.coin_creator_pick  : rd.coin_opponent_pick;
+  const oppPick = isCreator ? rd.coin_opponent_pick : rd.coin_creator_pick;
+  const result = rd.coin_result;
+
+  const choose = async (pick: 'heads' | 'tails') => {
+    if (busy || myPick) return;
+    setBusy(true);
+    const updated = await patchResult(sb, challenge.id, isCreator ? { coin_creator_pick: pick } : { coin_opponent_pick: pick });
+    const cp = updated.coin_creator_pick;
+    const op = updated.coin_opponent_pick;
+    if (cp && op) {
+      // Если оба загадали одно и то же — ничья по правилам? Сделаем проще: только один может быть прав.
+      // Если выбрали одинаково — рандом.
+      setFlipping(true);
+      setTimeout(async () => {
+        const resCoin: 'heads' | 'tails' = Math.random() < 0.5 ? 'heads' : 'tails';
+        const cWin = cp === resCoin;
+        const oWin = op === resCoin;
+        let winnerSide: 'creator' | 'opponent';
+        if (cWin && !oWin) winnerSide = 'creator';
+        else if (oWin && !cWin) winnerSide = 'opponent';
+        else winnerSide = Math.random() > 0.5 ? 'creator' : 'opponent';
+        const details = `Выпало ${resCoin === 'heads' ? '«орёл»' : '«решка»'} · ${creator.display_name}: ${cp === 'heads' ? 'орёл' : 'решка'} · ${opponent.display_name}: ${op === 'heads' ? 'орёл' : 'решка'}`;
+        const finalUpdated = await patchResult(sb, challenge.id, { coin_result: resCoin });
+        await finishMatch({ sb, challenge, creator, opponent, winnerSide, details, notify, addHistory, gameLabel, gameType, rdExtra: finalUpdated });
+        setFlipping(false);
+      }, 1500);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className={cn('glass p-3 text-center', myPick && 'gold-border')}>
+          <div className="text-[10px] uppercase text-gold/70">Вы</div>
+          <div className="text-3xl mt-2">{myPick === 'heads' ? '🪙' : myPick === 'tails' ? '⚪' : '❓'}</div>
+          <div className="text-[10px] mt-1">{myPick === 'heads' ? 'Орёл' : myPick === 'tails' ? 'Решка' : '—'}</div>
+        </div>
+        <div className={cn('glass p-3 text-center', oppPick && 'gold-border')}>
+          <div className="text-[10px] uppercase text-gold/70">{isCreator ? opponent.display_name : creator.display_name}</div>
+          <div className="text-3xl mt-2">{oppPick && (myPick || result) ? (oppPick === 'heads' ? '🪙' : '⚪') : (oppPick ? '🔒' : '⏳')}</div>
+          <div className="text-[10px] mt-1">{oppPick && (myPick || result) ? (oppPick === 'heads' ? 'Орёл' : 'Решка') : '...'}</div>
+        </div>
+      </div>
+
+      <div className="glass-strong p-4 text-center">
+        {result ? (
+          <>
+            <div className="text-[10px] uppercase tracking-widest text-gold/70">Выпало</div>
+            <div className="text-6xl mt-2">{result === 'heads' ? '🪙' : '⚪'}</div>
+            <div className="font-bold mt-1">{result === 'heads' ? 'Орёл' : 'Решка'}</div>
+          </>
+        ) : flipping ? (
+          <>
+            <div className="text-6xl animate-bounce">🪙</div>
+            <div className="text-xs text-amber-300 mt-2">Подбрасываем...</div>
+          </>
+        ) : !myPick ? (
+          <>
+            <div className="text-sm font-bold mb-2">Выберите сторону</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => choose('heads')} disabled={busy} className="btn-primary">🪙 Орёл</button>
+              <button onClick={() => choose('tails')} disabled={busy} className="btn-secondary">⚪ Решка</button>
+            </div>
+          </>
+        ) : (
+          <div className="text-sm text-muted-foreground">Жду выбор соперника...</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// PARITY — оба тайно загадывают число 1..10, сумма чёт/нечёт
+// ============================================================
+
+function ParityGame(p: GameProps) {
+  const { challenge, rd, isCreator, creator, opponent, sb, notify, addHistory, gameLabel, gameType } = p;
+  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<'pick' | 'guess' | 'reveal'>('pick');
+
+  const myNum  = isCreator ? rd.parity_creator_num  : rd.parity_opponent_num;
+  const oppNum = isCreator ? rd.parity_opponent_num : rd.parity_creator_num;
+  const myPick = isCreator ? rd.parity_creator_pick : rd.parity_opponent_pick;
+  const oppPick = isCreator ? rd.parity_opponent_pick : rd.parity_creator_pick;
+
+  const submitNum = async (n: number) => {
+    if (busy || myNum) return;
+    setBusy(true);
+    await patchResult(sb, challenge.id, isCreator ? { parity_creator_num: n } : { parity_opponent_num: n });
+    setBusy(false);
+  };
+
+  const submitPick = async (pick: 'even' | 'odd') => {
+    if (busy || myPick) return;
+    setBusy(true);
+    const updated = await patchResult(sb, challenge.id, isCreator ? { parity_creator_pick: pick } : { parity_opponent_pick: pick });
+    if (updated.parity_creator_pick && updated.parity_opponent_pick && updated.parity_creator_num && updated.parity_opponent_num) {
+      // Раскрытие
+      const sum = updated.parity_creator_num + updated.parity_opponent_num;
+      const isEven = sum % 2 === 0;
+      const cWin = (updated.parity_creator_pick === 'even') === isEven;
+      const oWin = (updated.parity_opponent_pick === 'even') === isEven;
+      let winnerSide: 'creator' | 'opponent';
+      if (cWin && !oWin) winnerSide = 'creator';
+      else if (oWin && !cWin) winnerSide = 'opponent';
+      else winnerSide = Math.random() > 0.5 ? 'creator' : 'opponent';
+      const details = `Сумма ${updated.parity_creator_num} + ${updated.parity_opponent_num} = ${sum} (${isEven ? 'чётное' : 'нечётное'})`;
+      await finishMatch({ sb, challenge, creator, opponent, winnerSide, details, notify, addHistory, gameLabel, gameType, rdExtra: updated });
+    }
+    setBusy(false);
+  };
+
+  const bothNumsSet = !!(rd.parity_creator_num && rd.parity_opponent_num);
+
+  return (
+    <div className="space-y-3">
+      <div className="glass p-3 text-center">
+        <div className="text-[10px] uppercase text-gold/70">Правила</div>
+        <div className="text-xs mt-1">Каждый загадывает число 1–10. Затем оба угадывают: сумма чётная или нечётная.</div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className={cn('glass p-3 text-center', myNum && 'gold-border')}>
+          <div className="text-[10px] uppercase text-gold/70">Вы</div>
+          <div className="text-2xl font-bold mt-2">{myNum ?? '?'}</div>
+          <div className="text-[10px] mt-1">{myPick ? (myPick === 'even' ? 'Чёт' : 'Нечёт') : '—'}</div>
+        </div>
+        <div className={cn('glass p-3 text-center', oppNum && 'gold-border')}>
+          <div className="text-[10px] uppercase text-gold/70">{isCreator ? opponent.display_name : creator.display_name}</div>
+          <div className="text-2xl font-bold mt-2">{(oppNum && myPick && oppPick) ? oppNum : oppNum ? '🔒' : '?'}</div>
+          <div className="text-[10px] mt-1">{oppPick && myPick ? (oppPick === 'even' ? 'Чёт' : 'Нечёт') : '...'}</div>
+        </div>
+      </div>
+
+      {!myNum && (
+        <div className="glass-strong p-3">
+          <div className="text-sm font-bold mb-2 text-center">Загадайте число 1–10</div>
+          <div className="grid grid-cols-5 gap-1.5">
+            {[1,2,3,4,5,6,7,8,9,10].map(n => (
+              <button key={n} onClick={() => submitNum(n)} disabled={busy} className="glass p-3 text-center font-bold active:scale-95 hover:gold-border">
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {myNum && !myPick && bothNumsSet && (
+        <div className="glass-strong p-3 text-center">
+          <div className="text-sm font-bold mb-2">Угадайте: сумма чётная или нечётная?</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => submitPick('even')} disabled={busy} className="btn-primary">⚖ Чёт</button>
+            <button onClick={() => submitPick('odd')} disabled={busy} className="btn-secondary">⚡ Нечёт</button>
+          </div>
+        </div>
+      )}
+
+      {myNum && !bothNumsSet && (
+        <div className="glass p-3 text-center text-xs text-muted-foreground">Ждём пока соперник загадает число...</div>
+      )}
+
+      {myPick && !oppPick && (
+        <div className="glass p-3 text-center text-xs text-muted-foreground">Ждём ответ соперника...</div>
       )}
     </div>
   );

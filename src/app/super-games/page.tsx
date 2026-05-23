@@ -30,11 +30,16 @@ export default function SuperGamesPage() {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const myId = currentUser?.id ?? null;
 
+  // На странице Супер игр показываем ТОЛЬКО Большие игры. Малые (mini_*, liars_bar) живут на /games.
+  const isBigGame = (t: string) => !t.startsWith('mini_') && t !== 'liars_bar';
+
   const myGames = state.superGames.filter(g =>
     !!myId && (g.participant_ids ?? []).includes(myId) &&
+    isBigGame(g.type) &&
     g.status !== 'finished' && g.status !== 'cancelled');
 
   const filtered = state.superGames.filter(g => {
+    if (!isBigGame(g.type)) return false;
     if (tab === 'upcoming') return g.status === 'scheduled';
     if (tab === 'live') return g.status === 'live';
     if (tab === 'archive') return g.status === 'finished' || g.status === 'cancelled';

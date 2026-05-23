@@ -13,6 +13,8 @@ import { useRouter } from 'next/navigation';
 
 const GAME_LABELS: Record<MiniGameType, { label: string; icon: string }> = {
   dice: { label: 'Кости', icon: '🎲' },
+  coin_flip: { label: 'Монетка', icon: '🪙' },
+  parity: { label: 'Чёт / Нечёт', icon: '🔢' },
   high_card: { label: 'Старшая карта', icon: '🃏' },
   roulette: { label: 'Рулетка', icon: '🎰' },
   slots: { label: 'Камень-Ножницы-Бумага', icon: '✊' },
@@ -42,6 +44,12 @@ export default function GamesPage() {
   const myChallenges = currentUser
     ? state.challenges.filter(c => c.creator_id === currentUser.id || c.opponent_id === currentUser.id)
     : [];
+
+  // Активные малые игры (Бар лжецов и mini_*) — на /games, не на /super-games.
+  const miniSuperGames = state.superGames.filter(g =>
+    (g.type === 'liars_bar' || g.type.startsWith('mini_'))
+    && (g.status === 'scheduled' || g.status === 'live')
+  );
 
   const accept = async (ch: GameChallenge) => {
     if (!currentUser || !sb) return;
@@ -128,12 +136,47 @@ export default function GamesPage() {
 
       {tab === 'open' && (
         <div className="space-y-3">
+          {/* Активные малые супер-игры (Бар лжецов, малые игры) */}
+          {miniSuperGames.length > 0 && (
+            <section>
+              <div className="text-[10px] uppercase tracking-widest text-emerald-300 mb-2">🎯 Активные малые игры</div>
+              <div className="space-y-2">
+                {miniSuperGames.map(g => {
+                  const inGame = !!currentUser && (g.participant_ids || []).includes(currentUser.id);
+                  return (
+                    <Link key={g.id} href={`/super-games/${g.id}`}>
+                      <div className={cn('glass p-3 active:scale-[0.99]',
+                        g.status === 'live' ? 'border border-amber-500/30 bg-amber-500/5' : 'border border-emerald-500/20')}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-bold text-sm truncate">{g.title}</div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {(g.participant_ids || []).length} игроков · {g.status === 'live' ? '🔴 в эфире' : '📅 сбор'}
+                              {g.entry_fee ? ` · вход ${g.entry_fee.toLocaleString('ru-RU')} ¥` : ''}
+                            </div>
+                          </div>
+                          <span className={cn('text-[10px] px-2 py-1 rounded',
+                            inGame ? 'bg-emerald-500/15 text-emerald-300' : 'bg-gold/15 text-gold')}>
+                            {inGame ? 'Вы внутри' : 'Заглянуть'}
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Открытые вызовы 1v1 */}
           {openChallenges.length === 0 ? (
-            <div className="glass p-6 text-center">
-              <div className="text-3xl mb-2 opacity-30">⚔️</div>
-              <p className="text-sm text-muted-foreground">Нет открытых вызовов.</p>
-              {!currentUser && <p className="text-xs text-gold mt-2">Войдите, чтобы видеть вызовы для вас.</p>}
-            </div>
+            miniSuperGames.length === 0 && (
+              <div className="glass p-6 text-center">
+                <div className="text-3xl mb-2 opacity-30">⚔️</div>
+                <p className="text-sm text-muted-foreground">Нет открытых вызовов.</p>
+                {!currentUser && <p className="text-xs text-gold mt-2">Войдите, чтобы видеть вызовы для вас.</p>}
+              </div>
+            )
           ) : openChallenges.map(ch => {
             const creator = state.participants.find(p => p.id === ch.creator_id);
             const gl = GAME_LABELS[ch.game_type];
@@ -187,6 +230,23 @@ export default function GamesPage() {
 
       {tab === 'mine' && (
         <div className="space-y-2">
+          {/* Малые супер-игры, в которых участвую */}
+          {currentUser && miniSuperGames.filter(g => (g.participant_ids || []).includes(currentUser.id)).length > 0 && (
+            <section className="space-y-2">
+              <div className="text-[10px] uppercase tracking-widest text-emerald-300">🎯 Малые игры</div>
+              {miniSuperGames.filter(g => (g.participant_ids || []).includes(currentUser.id)).map(g => (
+                <Link key={g.id} href={`/super-games/${g.id}`}>
+                  <div className="glass p-3 border border-emerald-500/20 active:scale-[0.99]">
+                    <div className="font-bold text-sm">{g.title}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {g.status === 'live' ? '🔴 в эфире' : 'сбор'} · {(g.participant_ids || []).length} игроков
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </section>
+          )}
+
           {myChallenges.length === 0 ? (
             <div className="glass p-6 text-center">
               <p className="text-sm text-muted-foreground">У вас ещё нет игр.</p>

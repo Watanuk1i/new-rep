@@ -22,6 +22,7 @@ import {
   applyTransfer, chargeToTreasury, payoutFromTreasury, transferBetweenPlayers,
 } from '@/lib/store/tx';
 import { JokerDrawRoom } from './JokerDrawRoom';
+import { MiniGameLobby, isInLobby } from './MiniGameLobby';
 import {
   TREASURY_FEE_RATE, applyTreasuryFee,
   spinRedBlack, findUniqueMax,
@@ -64,6 +65,20 @@ async function pushEvent(title: string, body: string | undefined, link: string) 
 // ===========================================================================
 
 export function MiniGameRoom({ game }: { game: SuperGame }) {
+  const st = (game.state || {}) as any;
+
+  // Универсальное лобби: показываем перед стартом игры.
+  // Игры могут поднять status = 'active' либо в onStart колбэке, либо через свои действия.
+  if (isInLobby(st)) {
+    return (
+      <MiniGameLobby
+        game={game}
+        state={st}
+        onStart={async () => { await startMiniGame(game); }}
+      />
+    );
+  }
+
   switch (game.type as MiniGameKind) {
     case 'mini_red_black':   return <RedBlackRoom game={game} />;
     case 'mini_blind_bid':   return <BlindBidRoom game={game} />;
@@ -75,6 +90,22 @@ export function MiniGameRoom({ game }: { game: SuperGame }) {
       if (game.type === 'mini_joker') return <JokerDrawRoom game={game} />;
       return null;
   }
+}
+
+/**
+ * Стартует малую игру: переводит статус в 'active'. Для red_black и slots
+ * это разрешает выбор/действия. Деньги списываются в момент действия игрока,
+ * как и было раньше — но кнопки появятся только после старта.
+ */
+async function startMiniGame(game: SuperGame) {
+  const sb = getSupabase();
+  if (!sb) return;
+  const { data } = await sb.from('super_games').select('state').eq('id', game.id).single();
+  const cur = (data?.state ?? {}) as any;
+  await sb.from('super_games').update({
+    state: { ...cur, status: 'active' },
+    status: 'live',
+  }).eq('id', game.id);
 }
 
 // ===========================================================================
@@ -284,9 +315,9 @@ function BlindBidRoom({ game }: { game: SuperGame }) {
       )}
       {myBid && !finished && <div className="text-[11px] text-emerald-300 text-center">✓ Ваша тайная ставка принята</div>}
 
-      {isAdmin && placedCount === players.length && !finished && (
+      {placedCount === players.length && players.length >= 2 && !finished && (
         <button
-          className="btn-success w-full text-xs"
+          className="btn-success w-full"
           onClick={() => revealBlindBid(game, players)}
         >🎬 Раскрыть и определить победителя</button>
       )}

@@ -334,6 +334,30 @@ function KirumiInboxCard({ r }: { r: LoanRequest }) {
       link_url: '/loans', is_read: false,
     });
     setBusy(false);
+    alert('Условия отправлены заёмщику. Он увидит их во вкладке «Мои запросы».');
+  };
+
+  const approveAsRequested = async () => {
+    if (!sb) return;
+    if (!confirm(`Принять запрос как есть: ${r.requested_amount.toLocaleString('ru-RU')} ¥ @ ${LOAN_NORMAL_RATE}% до дня ${r.requested_due_day ?? 3}?`)) return;
+    setBusy(true);
+    await sb.from('loan_requests').update({
+      status: 'counter_offer',
+      proposed_amount: r.requested_amount,
+      proposed_interest_rate: LOAN_NORMAL_RATE,
+      proposed_due_day: r.requested_due_day ?? 3,
+      collateral_text: null,
+      reviewed_by_id: KIRUMI_ID,
+      updated_at: new Date().toISOString(),
+    }).eq('id', r.id);
+    await sb.from('notifications').insert({
+      id: uid('n'), recipient_id: r.borrower_id, type: 'loan_counter',
+      title: 'Кируми одобрила запрос',
+      body: `${r.requested_amount.toLocaleString('ru-RU')} @ ${LOAN_NORMAL_RATE}% — нажмите «Принять» во вкладке Мои запросы`,
+      link_url: '/loans', is_read: false,
+    });
+    setBusy(false);
+    alert('Кируми одобрила запрос на стандартных условиях. Заёмщик увидит и подтвердит.');
   };
 
   return (
@@ -379,8 +403,9 @@ function KirumiInboxCard({ r }: { r: LoanRequest }) {
       <div className="text-[10px] text-muted-foreground">
         К возврату: <Yen amount={loanReturnAmount(amount, rate)} className="inline text-gold" iconClass="w-3 h-3" />
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <button onClick={counter} disabled={busy} className="btn-primary text-xs">📤 Отправить условия</button>
+      <div className="grid grid-cols-3 gap-2">
+        <button onClick={approveAsRequested} disabled={busy} className="btn-success text-xs">✓ Принять как есть</button>
+        <button onClick={counter} disabled={busy} className="btn-primary text-xs">📤 Свои условия</button>
         <button onClick={reject} className="btn-danger text-xs">✕ Отклонить</button>
       </div>
     </div>

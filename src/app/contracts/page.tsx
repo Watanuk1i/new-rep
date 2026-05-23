@@ -85,6 +85,10 @@ export default function ContractsPage() {
     (c.creator_id === currentUser.id || c.counterparty_id === currentUser.id)
     && (c.status === 'pending' || c.status === 'active' || c.status === 'expired' || c.status === 'disputed')
   );
+  // Входящие — те, где я counterparty и pending
+  const incomingForMe = contracts.filter(c =>
+    c.counterparty_id === currentUser.id && c.status === 'pending'
+  );
   const visibleAll = isAdmin || isKirumi
     ? contracts
     : contracts.filter(c =>
@@ -107,6 +111,18 @@ export default function ContractsPage() {
       </button>
 
       {creating && <CreateContractForm onDone={() => setCreating(false)} />}
+
+      {/* Входящие — требуют вашего ответа */}
+      {incomingForMe.length > 0 && (
+        <section>
+          <div className="text-[10px] uppercase tracking-widest text-emerald-300 mb-2 animate-pulse">
+            📥 Вам предложен{incomingForMe.length === 1 ? '' : 'ы'} {incomingForMe.length === 1 ? 'договор' : `договоры (${incomingForMe.length})`}
+          </div>
+          <div className="space-y-2">
+            {incomingForMe.map(c => <ContractCard key={c.id} contract={c} />)}
+          </div>
+        </section>
+      )}
 
       {/* Активные мои */}
       {myActive.length > 0 && (

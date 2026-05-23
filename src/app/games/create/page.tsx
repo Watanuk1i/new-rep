@@ -12,6 +12,8 @@ import type { MiniGameType } from '@/lib/store/types';
 
 const GAMES: { key: MiniGameType; label: string; icon: string }[] = [
   { key: 'dice', label: 'Кости', icon: '🎲' },
+  { key: 'coin_flip', label: 'Монетка', icon: '🪙' },
+  { key: 'parity', label: 'Чёт / Нечёт', icon: '🔢' },
   { key: 'high_card', label: 'Старшая карта', icon: '🃏' },
   { key: 'roulette', label: 'Рулетка', icon: '🎰' },
   { key: 'slots', label: 'Камень-Ножницы-Бумага', icon: '✊' },
@@ -50,9 +52,12 @@ function Inner() {
     setBusy(true);
     const id = uid('ch');
     const opp = isOpen ? null : opponentId;
+    const requiresGmApproval = stakeAmount > 100_000;
     const { error } = await sb.from('challenges').insert({
       id, game_type: gameType, creator_id: currentUser.id,
-      opponent_id: opp, stake_amount: stakeAmount, status: 'pending',
+      opponent_id: opp, stake_amount: stakeAmount,
+      status: requiresGmApproval ? 'pending' : 'pending',
+      result_data: requiresGmApproval ? { needs_gm_approval: true } : null,
     });
     if (error) {
       alert('Ошибка: ' + error.message);
@@ -60,6 +65,18 @@ function Inner() {
       return;
     }
     const gl = GAMES.find(g => g.key === gameType)!;
+    // Если нужен апрув — уведомляем ведущего
+    if (requiresGmApproval) {
+      await sb.from('notifications').insert({
+        id: uid('n'),
+        recipient_id: 'p-gm',
+        type: 'help_request_urgent',
+        title: '🚨 Большая ставка ждёт апрува',
+        body: `${currentUser.display_name} → ${gl.label} · ${stakeAmount.toLocaleString('ru-RU')} ¥`,
+        link_url: '/admin?tab=overview',
+        is_read: false,
+      });
+    }
     // Уведомление: только тому, кому адресован вызов, или всем (если открытый)
     if (opp) {
       const target = state.participants.find(p => p.id === opp);
