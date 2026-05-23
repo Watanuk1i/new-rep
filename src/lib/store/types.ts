@@ -348,9 +348,12 @@ export interface ContrabandRound {
   number: number;                              // 1..7
   status:
     | 'selecting_smuggler'
+    | 'kokichi_courier_swap_window'
     | 'choosing_amount'
     | 'selecting_inspector'
+    | 'kokichi_false_trail_window'
     | 'inspection_decision'
+    | 'kokichi_doubt_window'
     | 'reveal'
     | 'round_result';
   smuggler_team: ContrabandTeam;
@@ -359,14 +362,23 @@ export interface ContrabandRound {
   inspector_team: ContrabandTeam;
   inspector_id?: string | null;
   inspector_action?: InspectorAction | null;   // скрыто до раскрытия
+  inspector_final_action?: InspectorAction | null; // после Сомнения Кокичи
   suspected_amount?: number | null;            // скрыто до раскрытия
   result?: ContrabandResult | null;
   north_score_delta?: number;
   south_score_delta?: number;
   smuggler_personal_delta?: number;
   inspector_personal_delta?: number;
+  /** Использованные в этом раунде вмешательства Кокичи. */
+  kokichi_false_trail_text?: string | null;
+  kokichi_doubt_used?: boolean;
+  kokichi_courier_swap_used?: boolean;
+  kokichi_old_smuggler_id?: string | null;
+  kokichi_money_delta?: number;
   resolved_at?: string;
 }
+
+export type KokichiMode = 'curator' | 'curator_player' | 'disabled';
 
 export interface ContrabandState {
   current_round: number;                       // 0..7
@@ -379,14 +391,29 @@ export interface ContrabandState {
   south_score: number;
   /** История того, кто уже был Контрабандистом — чтобы каждый успел один раз. */
   smuggler_history: Record<ContrabandTeam, string[]>;
+  // Кокичи
+  kokichi_id?: string | null;
+  kokichi_mode?: KokichiMode;
+  kokichi_team?: ContrabandTeam | null;        // если curator_player
+  kokichi_false_trail_used?: boolean;
+  kokichi_doubt_used?: boolean;
+  kokichi_courier_swap_used?: boolean;
+  kokichi_smuggler_count?: number;             // лимит 1 за игру
+  kokichi_customs_count?: number;              // лимит 1 за игру
+  kokichi_total_money_delta?: number;          // итог Кокичи (для финала)
+  // Селестия как нейтральный участник (опционально)
+  celestia_participating?: boolean;
   status:
     | 'scheduled'
     | 'team_setup'
     | 'active'
     | 'selecting_smuggler'
+    | 'kokichi_courier_swap_window'
     | 'choosing_amount'
     | 'selecting_inspector'
+    | 'kokichi_false_trail_window'
     | 'inspection_decision'
+    | 'kokichi_doubt_window'
     | 'reveal'
     | 'round_result'
     | 'finished'

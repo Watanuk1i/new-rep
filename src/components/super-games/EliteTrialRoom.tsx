@@ -550,8 +550,11 @@ function AdminPanel({ game, et }: { game: SuperGame; et: EliteTrialState }) {
   const [accusation, setAccusation] = useState<string>(et.accusation_text);
   const [defense, setDefense] = useState<string>(et.defense_text);
 
+  // Активные цели Суда: Джунко (p-14), Мондо (p-11), Кируми (p-15).
+  // Бьякуя (p-3) исключён, потому что не активный участник.
+  const TARGET_ELITE_IDS = ['p-14', 'p-11', 'p-15'];
   const elites = state.participants.filter(p =>
-    isPlayer(p) && (p.status === 'elite' || ['p-11', 'p-collector'].includes(p.id))
+    TARGET_ELITE_IDS.includes(p.id) && p.is_active
   );
   const players = state.participants.filter(p => isPlayer(p) && p.is_active && p.id !== et.target_elite_id);
 

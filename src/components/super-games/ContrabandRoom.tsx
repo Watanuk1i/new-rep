@@ -16,6 +16,7 @@ import { cn, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import { chargeToTreasury, payoutFromTreasury } from '@/lib/store/tx';
 import { TogamiInfluencePanel } from '@/components/super-games/TogamiInfluencePanel';
+import { KokichiInfluencePanel } from '@/components/super-games/KokichiInfluencePanel';
 import {
   TOTAL_ROUNDS, TEAM_SIZE, TEAM_LABELS, TEAM_COLORS,
   MAX_SMUGGLE_AMOUNT, INSPECTOR_MISTAKE_PENALTY, EMPTY_CASE_REWARD,
@@ -103,7 +104,10 @@ export function ContrabandRoom({ game }: { game: SuperGame }) {
     <div className="space-y-4">
       <Header game={game} cb={cb} />
 
-      {/* Влияние Бьякуи (Фонд Тогами) */}
+      {/* Куратор Кокичи Ома */}
+      <KokichiInfluencePanel game={game} />
+
+      {/* Влияние Бьякуи (Фонд Тогами) — оставлено на случай возвращения Бьякуи */}
       <TogamiInfluencePanel
         game={game}
         gameKind="contraband"
@@ -382,9 +386,12 @@ function RoundView({
 function PhaseBadge({ status }: { status: ContrabandRound['status'] }) {
   const map: Record<ContrabandRound['status'], { label: string; cls: string }> = {
     selecting_smuggler:  { label: 'Выбор Контрабандиста', cls: 'bg-sky-500/15 text-sky-300 border-sky-500/30' },
+    kokichi_courier_swap_window: { label: 'Кокичи: Смена курьера?', cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
     choosing_amount:     { label: 'Выбор суммы',          cls: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30' },
     selecting_inspector: { label: 'Выбор Таможенника',    cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+    kokichi_false_trail_window: { label: 'Кокичи: Ложный след?', cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
     inspection_decision: { label: 'Решение Таможенника',  cls: 'bg-red-500/15 text-red-300 border-red-500/30' },
+    kokichi_doubt_window: { label: 'Кокичи: Сомнение?', cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
     reveal:              { label: 'Раскрытие',            cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
     round_result:        { label: 'Итог',                 cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
   };

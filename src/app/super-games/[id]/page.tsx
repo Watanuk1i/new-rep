@@ -21,6 +21,7 @@ import { DebtTowerRoom } from '@/components/super-games/DebtTowerRoom';
 import { DebtAuctionRoom } from '@/components/super-games/DebtAuctionRoom';
 import { RebellionRoom } from '@/components/super-games/RebellionRoom';
 import { EliteTrialRoom } from '@/components/super-games/EliteTrialRoom';
+import { EliteCandidateTrialRoom } from '@/components/super-games/EliteCandidateTrialRoom';
 import { ThroneRoom } from '@/components/super-games/ThroneRoom';
 import { MiniGameRoom } from '@/components/super-games/MiniGameRoom';
 import type { Participant } from '@/lib/store/types';
@@ -71,6 +72,7 @@ export default function SuperGameDetailPage() {
       {game.type === 'debt_tower'       && <DebtTowerRoom game={game} />}
       {game.type === 'debt_auction'     && <DebtAuctionRoom game={game} />}
       {game.type === 'elite_trial'      && <EliteTrialRoom game={game} />}
+      {game.type === 'elite_candidate_trial' && <EliteCandidateTrialRoom game={game} />}
       {game.type === 'rebellion'        && <RebellionRoom game={game} />}
       {game.type === 'throne_celestia'  && <ThroneRoom game={game} />}
       {game.type.startsWith('mini_')    && <MiniGameRoom game={game} />}
@@ -86,8 +88,8 @@ export default function SuperGameDetailPage() {
 function isLiveType(t: string): boolean {
   return t === 'minority_rule' || t === 'nine_bullets' || t === 'card_ship'
     || t === 'royal_roulette' || t === 'contraband' || t === 'debt_tower'
-    || t === 'debt_auction' || t === 'elite_trial' || t === 'rebellion'
-    || t === 'throne_celestia' || t.startsWith('mini_');
+    || t === 'debt_auction' || t === 'elite_trial' || t === 'elite_candidate_trial'
+    || t === 'rebellion' || t === 'throne_celestia' || t.startsWith('mini_');
 }
 
 function GameHeader({ game }: { game: any }) {

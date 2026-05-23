@@ -3,9 +3,12 @@
 export type Team = 'north' | 'south';
 export type InspectorAction = 'pass' | 'inspect';
 export type RoundResult = 'passed' | 'caught' | 'underestimated' | 'empty_case_trap';
+export type KokichiMode = 'curator' | 'curator_player' | 'disabled';
+export type KokichiInterventionType = 'false_trail' | 'customs_doubt' | 'courier_swap';
 
 // Денежные константы (обновлено под состав 11 игроков из patch_11)
 export const MAX_SMUGGLE_AMOUNT = 400_000;          // было 500k
+export const ALLOWED_CASE_AMOUNTS = [0, 100_000, 200_000, 300_000, 400_000];
 export const INSPECTOR_MISTAKE_PENALTY = 100_000;
 export const EMPTY_CASE_REWARD = 100_000;
 export const PERSONAL_COMMISSION_RATE = 0.10;
@@ -13,7 +16,27 @@ export const WINNING_TEAM_REWARD = 150_000;          // было 200k
 export const LOSING_TEAM_PENALTY = 75_000;           // было 100k
 export const TOTAL_ROUNDS = 4;                       // было 7
 export const TEAM_SIZE = 4;                          // было 7
+export const MIN_TEAM_SIZE = 3;                      // если игроков мало
 export const INITIAL_TEAM_SAFE = 2_000_000;          // было 3M
+
+// Константы Кокичи
+export const KOKICHI_FALSE_TRAIL_REWARD = 100_000;   // если Таможенник ошибся
+export const KOKICHI_FALSE_TRAIL_PENALTY = 100_000;  // если Таможенник прав
+export const KOKICHI_COURIER_SWAP_COST = 50_000;     // в Казну
+export const KOKICHI_CURATOR_BONUS = 200_000;        // если оборот ≥ 1M
+export const KOKICHI_CURATOR_PENALTY = 200_000;      // если оборот < 700k
+export const KOKICHI_CURATOR_BONUS_THRESHOLD = 1_000_000;
+export const KOKICHI_CURATOR_PENALTY_THRESHOLD = 700_000;
+
+export const KOKICHI_FALSE_TRAIL_MESSAGES = [
+  'По слухам, кейс пустой.',
+  'В этом кейсе, возможно, больше ¥250 000.',
+  'Контрабандист слишком уверен.',
+  'Таможенник сейчас ошибётся.',
+  'Кейс пахнет деньгами. Или страхом. Я путаю.',
+  'Одна из команд уже договорилась с Таможенником.',
+  'В этом раунде личная комиссия важнее командной победы.',
+];
 
 export const TEAM_LABELS: Record<Team, string> = {
   north: 'Северный банк',
@@ -126,4 +149,44 @@ export function canBeSmuggler(playerId: string, smugglerHistoryByTeam: Record<Te
   // Если все игроки команды уже были — разрешаем повторно (страховка от длинных игр)
   if (used.length >= teamPlayers.length) return true;
   return !used.includes(playerId);
+}
+
+
+// ===========================================================================
+// Кокичи: подсчёт оборота и кураторская выплата
+// ===========================================================================
+
+/**
+ * Случайное сообщение Ложного следа.
+ */
+export function randomFalseTrail(): string {
+  return KOKICHI_FALSE_TRAIL_MESSAGES[
+    Math.floor(Math.random() * KOKICHI_FALSE_TRAIL_MESSAGES.length)
+  ];
+}
+
+/**
+ * «Ошибка Таможенника» = пропустил с деньгами или проверил пустой.
+ */
+export function inspectorMadeMistake(input: { caseAmount: number; action: InspectorAction }): boolean {
+  if (input.action === 'pass' && input.caseAmount > 0) return true;
+  if (input.action === 'inspect' && input.caseAmount === 0) return true;
+  return false;
+}
+
+/**
+ * Общий оборот игры = сумма всех непустых кейсов.
+ */
+export function calcTurnover(rounds: { caseAmount: number }[]): number {
+  return rounds.reduce((s, r) => s + (r.caseAmount > 0 ? r.caseAmount : 0), 0);
+}
+
+/**
+ * Кураторская выплата Кокичи (только в режиме curator).
+ * curator_player не получает кураторских — только командные/личные.
+ */
+export function curatorPayout(turnover: number): number {
+  if (turnover >= KOKICHI_CURATOR_BONUS_THRESHOLD) return KOKICHI_CURATOR_BONUS;
+  if (turnover < KOKICHI_CURATOR_PENALTY_THRESHOLD) return -KOKICHI_CURATOR_PENALTY;
+  return 0;
 }
