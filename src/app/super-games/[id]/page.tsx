@@ -238,40 +238,6 @@ function BasicAdminControls({ game }: { game: any }) {
 function ForceCloseBlock({ game }: { game: any }) {
   const sb = getSupabase();
 
-  const forceFinish = async () => {
-    if (!sb) return;
-    if (!confirm(`Принудительно ЗАВЕРШИТЬ «${game.title}»?\n\nЭто пометит игру как finished, не запуская финальный расчёт. Деньги, уже списанные/выплаченные, останутся как есть. Используйте если игра застряла.`)) return;
-    const cur = (game.state ?? {}) as any;
-    await sb.from('super_games').update({
-      state: { ...cur, status: 'finished' },
-      status: 'finished',
-    }).eq('id', game.id);
-    await sb.from('events').insert({
-      id: 'ev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
-      type: 'big_game_finished',
-      title: `${game.title} · принудительно завершено ведущим`,
-      link_url: `/super-games/${game.id}`,
-      is_for_gm_only: false,
-    });
-  };
-
-  const forceCancel = async () => {
-    if (!sb) return;
-    if (!confirm(`Принудительно ОТМЕНИТЬ «${game.title}»?\n\nЭто пометит игру как cancelled. Если в игре остались списанные ставки/банк — их придётся вернуть вручную.`)) return;
-    const cur = (game.state ?? {}) as any;
-    await sb.from('super_games').update({
-      state: { ...cur, status: 'cancelled' },
-      status: 'cancelled',
-    }).eq('id', game.id);
-    await sb.from('events').insert({
-      id: 'ev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
-      type: 'big_game_finished',
-      title: `${game.title} · отменена ведущим`,
-      link_url: `/super-games/${game.id}`,
-      is_for_gm_only: false,
-    });
-  };
-
   const forceDelete = async () => {
     if (!sb) return;
     if (!confirm(`УДАЛИТЬ «${game.title}» полностью? Историю не восстановить.`)) return;
@@ -279,64 +245,120 @@ function ForceCloseBlock({ game }: { game: any }) {
     history.back();
   };
 
-  const refundStakes = async () => {
+  // Завершить + раздать призы (победителям). Призы = bank, делятся поровну между winner_ids.
+  const finishWithPrizes = async () => {
+    if (!sb) return;
+    const cur = (game.state ?? {}) as any;
+    const winners: string[] = (cur.winner_ids && Array.isArray(cur.winner_ids)) ? cur.winner_ids
+      : (game.winner_id ? [game.winner_id] : []);
+    const bank: number = Number(game.bank ?? cur.bank ?? 0);
+    if (!confirm(
+      `ЗАВЕРШИТЬ «${game.title}» и раздать призы?\n\n` +
+      `Банк: ${bank.toLocaleString('ru-RU')} ¥\n` +
+      `Победителей: ${winners.length}\n\n` +
+      (winners.length === 0 || bank === 0
+        ? 'Призы не раздаются (нет победителей или пустой банк). Игра просто помечается как finished.'
+        : `Каждый победитель получит ${(Math.floor(bank / winners.length)).toLocaleString('ru-RU')} ¥ из Казны.`)
+    )) return;
+    if (winners.length > 0 && bank > 0) {
+      const link = `/super-games/${game.id}`;
+      const each = Math.floor(bank / winners.length);
+      for (const wid of winners) {
+        await sb.rpc('apply_transfer', {
+          p_from: 'p-treasury',
+          p_to: wid,
+          p_amount: each,
+          p_reason: `Приз: ${game.title}`,
+          p_link: link,
+        });
+        await sb.from('notifications').insert({
+          id: 'n-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+          recipient_id: wid,
+          type: 'game_result',
+          title: `🏆 Приз за «${game.title}»`,
+          body: `+${each.toLocaleString('ru-RU')} ¥`,
+          link_url: link,
+          is_read: false,
+        });
+      }
+    }
+    await sb.from('super_games').update({
+      state: { ...cur, status: 'finished' },
+      status: 'finished',
+      bank: 0,
+    }).eq('id', game.id);
+    await sb.from('events').insert({
+      id: 'ev-' + Date.now(),
+      type: 'big_game_finished',
+      title: `${game.title} · завершено · призы выданы`,
+      link_url: `/super-games/${game.id}`,
+      is_for_gm_only: false,
+    });
+  };
+
+  // Отменить + вернуть всем взносы и потраченное в state.fee_paid
+  const cancelAndRefund = async () => {
     if (!sb) return;
     const cur = (game.state ?? {}) as any;
     const feePaid = (cur.fee_paid ?? {}) as Record<string, number>;
-    const link = `/super-games/${game.id}`;
     const entries = Object.entries(feePaid).filter(([, v]) => Number(v) > 0);
-    if (entries.length === 0) {
-      alert('У игры нет учтённых взносов в state.fee_paid.');
-      return;
-    }
     const total = entries.reduce((s, [, v]) => s + Number(v), 0);
-    if (!confirm(`Вернуть взносы из Казны участникам игры «${game.title}»?\n\nИгроков: ${entries.length}, общая сумма: ${total.toLocaleString('ru-RU')} ¥. Действие создаст записи tx_in и уведомления.`)) return;
-    // payoutFromTreasury используется в других местах; берём через rpc apply_transfer
+    if (!confirm(
+      `ОТМЕНИТЬ «${game.title}» и вернуть деньги?\n\n` +
+      `Игроков с взносами: ${entries.length}\n` +
+      `Общая сумма возврата: ${total.toLocaleString('ru-RU')} ¥`
+    )) return;
+    const link = `/super-games/${game.id}`;
     for (const [pid, amount] of entries) {
       await sb.rpc('apply_transfer', {
         p_from: 'p-treasury',
         p_to: pid,
         p_amount: Math.round(Number(amount)),
-        p_reason: `Возврат · ${game.title} (отмена ведущим)`,
+        p_reason: `Возврат · ${game.title} (отмена)`,
         p_link: link,
       });
       await sb.from('notifications').insert({
         id: 'n-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
         recipient_id: pid,
         type: 'refund',
-        title: `Возврат взноса · ${game.title}`,
+        title: `Возврат · ${game.title}`,
         body: `+${Number(amount).toLocaleString('ru-RU')} ¥`,
         link_url: link,
         is_read: false,
       });
     }
-    // Обнуляем fee_paid в state
     await sb.from('super_games').update({
-      state: { ...cur, fee_paid: {} },
+      state: { ...cur, status: 'cancelled', fee_paid: {} },
+      status: 'cancelled',
       bank: 0,
     }).eq('id', game.id);
     await sb.from('events').insert({
       id: 'ev-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
       type: 'big_game_finished',
-      title: `${game.title} · ведущий вернул взносы (${total.toLocaleString('ru-RU')} ¥)`,
+      title: `${game.title} · отменена ведущим, возвращено ${total.toLocaleString('ru-RU')} ¥`,
       link_url: link,
       is_for_gm_only: false,
     });
-    alert('Взносы возвращены участникам.');
   };
 
   return (
     <div className="glass-strong p-3 border border-red-500/30 bg-red-500/5">
-      <div className="text-[10px] uppercase tracking-widest text-red-300/80 mb-2">⚠️ Управление ведущего · принудительно</div>
-      <div className="grid grid-cols-2 gap-2">
-        <button onClick={forceFinish} className="btn-secondary text-[11px]">🏁 Завершить</button>
-        <button onClick={forceCancel} className="btn-danger text-[11px]">🛑 Отменить</button>
-        <button onClick={refundStakes} className="col-span-2 btn-secondary text-[11px]">💰 Вернуть взносы участникам</button>
-        <button onClick={forceDelete} className="col-span-2 btn-danger text-[11px]">✕ Удалить запись</button>
+      <div className="text-[10px] uppercase tracking-widest text-red-300/80 mb-2">⚠️ Управление ведущего</div>
+      <div className="space-y-2">
+        <button onClick={finishWithPrizes} className="btn-success w-full text-xs">
+          🏁 Завершить и раздать призы победителям
+        </button>
+        <button onClick={cancelAndRefund} className="btn-secondary w-full text-xs">
+          ↩ Отменить и вернуть деньги участникам
+        </button>
+        <button onClick={forceDelete} className="btn-danger w-full text-xs">
+          ✕ Удалить запись игры (без возврата)
+        </button>
       </div>
       <div className="text-[10px] text-muted-foreground mt-2">
-        Возврат смотрит на <code>state.fee_paid</code> и шлёт деньги из Казны игрокам через apply_transfer.
-        Используйте «Вернуть взносы» до Завершить, иначе банк может не сойтись.
+        «Завершить» — игра считается состоявшейся, призы из банка делятся между winner_ids. То что проиграли во время игры — уже проиграно.<br/>
+        «Отменить» — возврат всех взносов из state.fee_paid через Казну.<br/>
+        «Удалить» — полное удаление записи игры (последний шаг).
       </div>
     </div>
   );

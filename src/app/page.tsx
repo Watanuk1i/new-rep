@@ -70,9 +70,12 @@ export default function HomePage() {
             <p className="text-sm text-muted-foreground mt-2 leading-relaxed italic">
               «Здесь роскошь и отчаяние идут рука об руку. Делай ставки, собирай Питомцев и пробивайся в Элиту.»
             </p>
-            <div className="mt-4">
-              <Link href="/games" className="btn-primary w-full sm:w-auto">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Link href="/games" className="btn-primary">
                 🎲 Начать Безумный Азарт
+              </Link>
+              <Link href="/help" className="btn-secondary border-rose-500/40 bg-rose-500/10 text-rose-200 active:bg-rose-500/20">
+                🆘 Позвать на помощь
               </Link>
             </div>
           </div>
