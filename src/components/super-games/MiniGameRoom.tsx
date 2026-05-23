@@ -24,6 +24,7 @@ import {
 import { JokerDrawRoom } from './JokerDrawRoom';
 import { MiniGameLobby, isInLobby } from './MiniGameLobby';
 import { DieView } from '@/components/ui/DieView';
+import { freshDeck as freshJokerDeck } from '@/lib/jokerdraw/logic';
 import {
   TREASURY_FEE_RATE, applyTreasuryFee,
   spinRedBlack, findUniqueMax,
@@ -145,8 +146,22 @@ async function startMiniGame(game: SuperGame) {
     }
   }
 
+  // Для mini_joker дополнительно инициализируем колоду и порядок ходов
+  const extraStateUpdate: any = {};
+  if (data.type === 'mini_joker') {
+    const order = [...participants];
+    // Перемешиваем порядок
+    for (let i = order.length - 1; i > 0; i--) {
+      const k = Math.floor(Math.random() * (i + 1));
+      [order[i], order[k]] = [order[k], order[i]];
+    }
+    extraStateUpdate.deck = freshJokerDeck();
+    extraStateUpdate.turn_order = order;
+    extraStateUpdate.current_idx = 0;
+  }
+
   await sb.from('super_games').update({
-    state: { ...cur, status: 'active', fee_paid: feePaid },
+    state: { ...cur, ...extraStateUpdate, status: 'active', fee_paid: feePaid, bank: (cur.bank ?? 0) + added },
     status: 'live',
     bank: (data.bank ?? 0) + added,
   }).eq('id', game.id);
@@ -488,6 +503,20 @@ function LiarDiceRoom({ game }: { game: SuperGame }) {
   return (
     <div className="space-y-3">
       <MiniHeader game={game} title="🎲 Лжец на кубиках" stake={stake} />
+
+      <details className="glass p-3 group">
+        <summary className="cursor-pointer text-[11px] flex items-center justify-between">
+          <span className="text-gold/80 font-bold">📖 Как играть · правила</span>
+          <span className="text-gold/60 group-open:rotate-180 transition">▾</span>
+        </summary>
+        <div className="text-[11px] text-muted-foreground mt-2 space-y-2 leading-relaxed">
+          <p><b className="text-gold">Суть.</b> У каждого игрока 5 скрытых кубиков. Вы видите только свои. Заявки идут на ВСЕ кубики на столе у всех игроков сразу.</p>
+          <p><b className="text-gold">Ход.</b> Заявите «минимум N кубиков со значением X». Например: «минимум 3 шестёрки» — на столе как минимум 3 шестёрки.</p>
+          <p><b className="text-gold">Следующий игрок:</b> либо <b className="text-emerald-300">повысить ставку</b> (увеличить количество, или то же количество с большим значением), либо <b className="text-red-300">обвинить во лжи</b>.</p>
+          <p><b className="text-gold">Раскрытие.</b> Все кубики раскрываются и считаются. Если заявка правдива — наказание получает обвинитель. Если ложна — наказание получает заявивший.</p>
+          <p><b className="text-gold">Наказание</b> — револьверная проверка. Осечка — игрок остаётся, выстрел — выбывает (теряет ставку, банк остаётся в игре). Последний за столом забирает банк.</p>
+        </div>
+      </details>
 
       {allPaid && !finished && st.status !== 'cancelled' && (
         <div className="glass p-3 space-y-2">

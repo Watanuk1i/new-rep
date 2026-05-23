@@ -44,7 +44,8 @@ export function findUniqueMax(bids: Record<string, number>): { winnerId: string 
 }
 
 // ===== Тип 7: Лжец на кубиках =====
-export const LIAR_DICE_PER_PLAYER = 3;
+// По спеке Бар лжецов — 5 кубиков на руку.
+export const LIAR_DICE_PER_PLAYER = 5;
 /** Один бросок d6 (значения 1..6). */
 export function rollDie(): number {
   return 1 + Math.floor(Math.random() * 6);
@@ -60,11 +61,10 @@ export function countFaces(dice: Record<string, number[]>, face: number): number
   for (const arr of Object.values(dice)) for (const v of arr) if (v === face) c += 1;
   return c;
 }
-/** Новое заявление должно быть «выше»: больше count или тот же count + большее значение. */
+/** По правилам спеки «Бар лжецов»: повышение = количество должно строго расти.
+ *  То же количество с большим значением НЕ считается повышением — нужно увеличивать count. */
 export function isHigherClaim(prev: { count: number; face: number }, next: { count: number; face: number }): boolean {
-  if (next.count > prev.count) return true;
-  if (next.count === prev.count && next.face > prev.face) return true;
-  return false;
+  return next.count > prev.count;
 }
 
 // ===== Тип 6: 21 отчаяния =====
