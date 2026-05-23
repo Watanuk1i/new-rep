@@ -356,8 +356,8 @@ function BidInput({ game, currentUserId }: { game: SuperGame; currentUserId: str
 async function placeBlindBid(game: SuperGame, playerId: string, amount: number) {
   const sb = getSupabase();
   if (!sb) return;
-  // Списываем сумму в Казну
-  const res = await chargeToTreasury(playerId, amount, 'Малая игра · Слепая ставка', `/super-games/${game.id}`);
+  // Списываем сумму в Казну (без долга — малые игры в минус не уходят)
+  const res = await chargeToTreasury(playerId, amount, 'Малая игра · Слепая ставка', `/super-games/${game.id}`, { noDebt: true });
   if (!res.ok) return;
   const cur = await readState<MiniGameBlindBidState>(game.id);
   if (!cur) return;
@@ -538,7 +538,7 @@ async function collectStakesAndDeal(game: SuperGame, players: Participant[], sta
   let bankAdded = 0;
   for (const p of players) {
     if ((feePaid[p.id] ?? 0) > 0) continue;
-    const res = await chargeToTreasury(p.id, stake, 'Малая игра · Лжец на кубиках · ставка', link);
+    const res = await chargeToTreasury(p.id, stake, 'Малая игра · Лжец на кубиках · ставка', link, { noDebt: true });
     if (res.ok) { feePaid[p.id] = stake; bankAdded += stake; }
   }
   // Раздаём кубики
@@ -721,7 +721,7 @@ async function collectStakesAndDeal21(game: SuperGame, players: Participant[], s
   let added = 0;
   for (const p of players) {
     if ((feePaid[p.id] ?? 0) > 0) continue;
-    const res = await chargeToTreasury(p.id, stake, '21 отчаяния · ставка', link);
+    const res = await chargeToTreasury(p.id, stake, '21 отчаяния · ставка', link, { noDebt: true });
     if (res.ok) { feePaid[p.id] = stake; added += stake; }
   }
   const hands: Record<string, number[]> = { ...cur.hands };
@@ -1011,7 +1011,7 @@ async function collectStakes(game: SuperGame, players: Participant[], stake: num
   let added = 0;
   for (const p of players) {
     if ((feePaid[p.id] ?? 0) > 0) continue;
-    const res = await chargeToTreasury(p.id, stake, `Малая игра · ставка`, link);
+    const res = await chargeToTreasury(p.id, stake, `Малая игра · ставка`, link, { noDebt: true });
     if (res.ok) { feePaid[p.id] = stake; added += stake; }
   }
   await sb.from('super_games').update({

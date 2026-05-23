@@ -5,7 +5,8 @@ export const KIRUMI_ID = 'p-15';
 export const MONDO_ID  = 'p-11';
 export const PEKO_ID   = 'p-peko';
 export const QUEEN_ID  = 'p-queen';
-export const TREASURY_ID = 'p-treasury'; // он же Фонд Тогами
+export const TREASURY_ID = 'p-treasury';     // Фонд Тогами — системный банк академии
+export const KIRUMI_FUND_ID = 'p-kirumi-fund'; // Кредитный резерв Кируми (для кредитов)
 
 // Стандартные условия кредитов Кируми
 export const LOAN_NORMAL_RATE = 20;   // %

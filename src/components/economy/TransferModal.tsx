@@ -10,7 +10,7 @@ import { CharacterIcon } from '@/components/ui/CharacterIcon';
 import { Yen, YenIcon } from '@/components/ui/Yen';
 import { cn, formatYenFull } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
-import { applyTransfer } from '@/lib/store/tx';
+import { applyTransfer, safeTransfer } from '@/lib/store/tx';
 
 interface Props {
   open: boolean;
@@ -85,8 +85,8 @@ export function TransferModal({
 
     setBusy(true);
 
-    // 1) Атомарный перевод через RPC: пишет history, при нехватке создаёт авто-долг.
-    const tx = await applyTransfer(
+    // 1) Безопасный перевод (без авто-долга) — обычные переводы по спеке не могут уйти в минус.
+    const tx = await safeTransfer(
       currentUser.id,
       recipient.id,
       amount,

@@ -15,18 +15,35 @@ export interface TxResult {
   error?: string;
 }
 
-/** Универсальный перевод из A в B. Если у A не хватает — авто-долг A → B. */
+/**
+ * Универсальный перевод из A в B. По умолчанию — атомарно через RPC apply_transfer:
+ * если у A не хватает, автоматически создаётся долг A → B.
+ *
+ * Если опция `noDebt: true` — функция предварительно проверяет баланс и
+ * отказывает в переводе при нехватке средств. Используется для обычных переводов
+ * и Малых игр (по спеке: уйти в минус нельзя).
+ */
 export async function applyTransfer(
   from: string,
   to: string,
   amount: number,
   reason: string,
-  link?: string
+  link?: string,
+  opts?: { noDebt?: boolean }
 ): Promise<TxResult> {
   const sb = getSupabase();
   if (!sb) return { ok: false, error: 'No supabase client' };
   if (amount <= 0) return { ok: true };
   if (from === to) return { ok: true };
+
+  if (opts?.noDebt) {
+    // Pre-flight: проверяем баланс плательщика. Без долгов.
+    const { data: payer } = await sb.from('participants').select('balance').eq('id', from).maybeSingle();
+    if (!payer) return { ok: false, error: 'Плательщик не найден' };
+    if (payer.balance < amount) {
+      return { ok: false, error: `Недостаточно средств: ${payer.balance.toLocaleString('ru-RU')} ¥ < ${amount.toLocaleString('ru-RU')} ¥` };
+    }
+  }
 
   const { data, error } = await sb.rpc('apply_transfer', {
     p_from: from,
@@ -42,12 +59,22 @@ export async function applyTransfer(
   return { ok: true, debtId: data && typeof data === 'string' && data.length > 0 ? data : undefined };
 }
 
-/** Игрок платит в Казну студсовета. При нехватке — долг Казне. */
-export function chargeToTreasury(participantId: string, amount: number, reason: string, link?: string) {
-  return applyTransfer(participantId, TREASURY_ID, amount, reason, link);
+/**
+ * Игрок платит в Фонд Тогами.
+ * По умолчанию: при нехватке создаётся авто-долг (для штрафов и взносов в Больших играх).
+ * Передайте `noDebt: true` для сценариев, где долг создаваться НЕ должен (Малые игры, обычные взносы).
+ */
+export function chargeToTreasury(
+  participantId: string,
+  amount: number,
+  reason: string,
+  link?: string,
+  opts?: { noDebt?: boolean }
+) {
+  return applyTransfer(participantId, TREASURY_ID, amount, reason, link, { noDebt: opts?.noDebt });
 }
 
-/** Казна студсовета выплачивает игроку. */
+/** Фонд Тогами выплачивает игроку. */
 export function payoutFromTreasury(participantId: string, amount: number, reason: string, link?: string) {
   return applyTransfer(TREASURY_ID, participantId, amount, reason, link);
 }
@@ -55,6 +82,16 @@ export function payoutFromTreasury(participantId: string, amount: number, reason
 /** Прямой перевод между двумя игроками (победитель/проигравший в дуэли и т.п.). */
 export function transferBetweenPlayers(from: string, to: string, amount: number, reason: string, link?: string) {
   return applyTransfer(from, to, amount, reason, link);
+}
+
+/**
+ * Безопасный перевод без права уйти в минус. Использовать для:
+ * — обычных переводов между игроками,
+ * — Малых игр и быстрых пари,
+ * — любых сделок, где по спеке долг создаваться НЕ должен.
+ */
+export function safeTransfer(from: string, to: string, amount: number, reason: string, link?: string) {
+  return applyTransfer(from, to, amount, reason, link, { noDebt: true });
 }
 
 /** Голос в правиле меньшинства. */

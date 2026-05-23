@@ -16,7 +16,7 @@ import { cn, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import { applyTransfer } from '@/lib/store/tx';
 import {
-  KIRUMI_ID, MONDO_ID, PEKO_ID, QUEEN_ID, TREASURY_ID,
+  KIRUMI_ID, MONDO_ID, PEKO_ID, QUEEN_ID, TREASURY_ID, KIRUMI_FUND_ID,
   LOAN_NORMAL_RATE, LOAN_URGENT_RATE,
   OVERDUE_RATE, MONDO_COMMISSION_RATE,
   PET_CANDIDATE_THRESHOLD, PET_LIMITS,
@@ -218,7 +218,10 @@ function MyRequests({ requests }: { requests: LoanRequest[] }) {
     const rate = r.proposed_interest_rate ?? LOAN_NORMAL_RATE;
     const dueDay = r.proposed_due_day ?? r.requested_due_day ?? 3;
     const link = '/loans';
-    const tx = await applyTransfer(TREASURY_ID, currentUser.id, principal,
+    // Кредиты идут из Кредитного резерва Кируми. Если резерв пуст — fallback на Фонд Тогами.
+    const { data: fund } = await sb.from('participants').select('balance').eq('id', KIRUMI_FUND_ID).maybeSingle();
+    const sourceId = (fund?.balance ?? 0) >= principal ? KIRUMI_FUND_ID : TREASURY_ID;
+    const tx = await applyTransfer(sourceId, currentUser.id, principal,
       `Кредит Кируми: ${r.reason ?? '—'}`, link);
     if (!tx.ok) { alert(tx.error || 'Ошибка'); return; }
     const debtId = uid('d');
@@ -226,8 +229,8 @@ function MyRequests({ requests }: { requests: LoanRequest[] }) {
     await sb.from('debts').insert({
       id: debtId,
       debtor_id: currentUser.id,
-      // Кредитор формально — Казна (туда возвращается долг), Кируми отмечена через description.
-      creditor_id: TREASURY_ID,
+      // Кредитор = Кредитный резерв Кируми (или Фонд Тогами при fallback).
+      creditor_id: sourceId,
       amount: owe,
       principal_amount: principal,
       interest_rate: rate,
@@ -441,9 +444,9 @@ function RequestCard({
 
 function KirumiLoans() {
   const { state } = useStore();
-  // Кредиты Кируми = долги с source 'kirumi_loan' (или с creditor_id KIRUMI_ID для старых записей).
+  // Кредиты Кируми = долги с source 'kirumi_loan' (или с creditor_id KIRUMI_ID/KIRUMI_FUND_ID).
   const debts = state.debts.filter(d =>
-    d.source === 'kirumi_loan' || d.creditor_id === KIRUMI_ID
+    d.source === 'kirumi_loan' || d.creditor_id === KIRUMI_ID || d.creditor_id === KIRUMI_FUND_ID
   );
   if (debts.length === 0) {
     return <div className="glass p-6 text-center text-sm text-muted-foreground">Кируми пока никому не выдала.</div>;

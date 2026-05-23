@@ -206,7 +206,7 @@ function CreateGameModal({ type, onClose }: { type: DebtGameType; onClose: () =>
     const opts: { value: DebtGameOpponentType; label: string; id: string }[] = [];
     if (selectedDebt) {
       if (selectedDebt.creditor_id === KIRUMI_ID) opts.push({ value: 'kirumi', label: 'Кируми (кредитор)', id: KIRUMI_ID });
-      if (selectedDebt.creditor_id === TREASURY_ID) opts.push({ value: 'treasury', label: 'Казна студсовета', id: TREASURY_ID });
+      if (selectedDebt.creditor_id === TREASURY_ID) opts.push({ value: 'treasury', label: 'Фонд Тогами', id: TREASURY_ID });
       if (selectedDebt.collector_id === MONDO_ID || selectedDebt.status === 'collection' || selectedDebt.status === 'overdue')
         opts.push({ value: 'mondo', label: 'Мондо (взыскатель)', id: MONDO_ID });
       if (selectedDebt.executor_id === PEKO_ID) opts.push({ value: 'peko', label: 'Пеко (исполнитель)', id: PEKO_ID });

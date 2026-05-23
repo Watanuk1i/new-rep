@@ -199,19 +199,20 @@ function BetModal({ market, option, onClose }: { market: PariMarket; option: Par
     const newBets = [...(market.bets || []), newBet];
     const { error } = await sb.from('pari').update({ bets: newBets }).eq('id', market.id);
     if (error) { setBusy(false); alert(error.message); return; }
-    // Деньги уходят в Казну (пул пари). При нехватке — авто-долг Казне.
+    // Деньги уходят в Фонд Тогами (пул пари). По спеке обычные пари в минус НЕ уходят.
     const tx = await chargeToTreasury(
       currentUser.id,
       amount,
       `Ставка в пари: ${market.title}`,
-      '/pari'
+      '/pari',
+      { noDebt: true },
     );
     if (!tx.ok) { setBusy(false); alert(tx.error || 'Ошибка перевода'); return; }
     if (!market.is_anonymous && market.creator_id !== currentUser.id) {
       await notify(market.creator_id, {
         type: 'bet_placed',
         title: 'Новая ставка на ваше пари',
-        body: `${currentUser.display_name} поставил ${amount.toLocaleString('ru-RU')} ейнов${tx.debtId ? ' (в долг Казне)' : ''}`,
+        body: `${currentUser.display_name} поставил ${amount.toLocaleString('ru-RU')} ейнов`,
         link_url: '/pari',
       });
     }
