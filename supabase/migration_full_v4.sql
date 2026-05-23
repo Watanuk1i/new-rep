@@ -79,6 +79,11 @@ INSERT INTO participants (id, display_name, status, balance, reputation, sprite_
 VALUES ('p-maki', 'Маки Харукава', 'player', 1000000, 20, 2, 86, TRUE, FALSE)
 ON CONFLICT (id) DO UPDATE SET balance = 1000000, status = 'player', is_active = TRUE, display_name = 'Маки Харукава';
 
+-- K1-B0 — новый активный
+INSERT INTO participants (id, display_name, status, balance, reputation, sprite_sheet, sprite_y, is_active, is_registered)
+VALUES ('p-kiibo', 'K1-B0', 'player', 1000000, 10, 3, 86, TRUE, FALSE)
+ON CONFLICT (id) DO UPDATE SET balance = 1000000, status = 'player', is_active = TRUE, display_name = 'K1-B0';
+
 -- Один активный Инкогнито
 INSERT INTO participants (id, display_name, status, balance, reputation, is_active, is_registered)
 VALUES ('p-incog-1', 'Инкогнито', 'player', 1000000, 0, TRUE, FALSE)
