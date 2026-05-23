@@ -806,24 +806,27 @@ function ResetEconomySection() {
     setBusy(true);
     try {
       if (opts.balances) {
-        // Возвращаем стартовые балансы по статусам
-        const map: Record<string, number> = {
+        // Возвращаем стартовые балансы по статусам и индивидуальные значения по id (спека).
+        const byStatus: Record<string, number> = {
           gm: 999_999_999,
-          treasury: 15_000_000, // под 11 игроков
+          treasury: 20_000_000,        // Фонд Тогами
           queen: 5_000_000,
-          elite: 3_000_000,
-          collector: 3_000_000,
+          elite: 2_500_000,
+          collector: 6_000_000,        // Кредитный резерв Кируми
           master: 2_000_000,
           player: 1_000_000,
           pet: 100_000,
         };
+        // Перекрытия по id (Кокичи и Пеко — игроки, но стартуют с 1.5M).
+        const byId: Record<string, number> = {
+          'p-kokichi': 1_500_000,
+          'p-peko':    1_500_000,
+        };
         const { data: parts } = await sb.from('participants').select('id, status');
         for (const p of parts ?? []) {
-          const target = map[p.status] ?? 1_000_000;
+          const target = byId[p.id] ?? byStatus[p.status] ?? 1_000_000;
           await sb.from('participants').update({ balance: target }).eq('id', p.id);
         }
-        // Особые системные аккаунты
-        // p-togami-fund устарел — фонд = p-treasury. Оставлен ради старых данных, баланс не сбрасываем.
       }
       if (opts.debts) {
         await sb.from('debts').delete().neq('id', '');
@@ -942,37 +945,40 @@ function FullResetSection() {
       await sb.from('challenges').delete().neq('id', '');
 
       // 2) Возвращаем участников к каноничным дефолтам.
+      // Спецификация: Фонд Тогами 20M, Кредитный резерв Кируми 6M, 11 активных игроков.
       const seed: Array<[string, string, string, number, number, boolean]> = [
         // id, display_name, status, balance, reputation, is_active
-        ['p-gm',         'Монокума',           'gm',       999_999_999, 100, true],
-        ['p-treasury',   'Фонд Тогами',        'treasury', 15_000_000,  0,   true],
-        ['p-queen',      'Селестия Люденберг', 'queen',    5_000_000,   50,  true],
-        ['p-1',          'Макото Наэги',       'player',   1_000_000,   60,  false],
-        ['p-2',          'Кёко Киригири',      'player',   1_500_000,   70,  false],
-        ['p-3',          'Бьякуя Тогами',      'player',   2_000_000,   80,  false],
-        ['p-4',          'Токо Фукава',        'player',   800_000,     40,  false],
-        ['p-5',          'Аой Асахина',        'player',   900_000,     65,  false],
-        ['p-6',          'Ясухиро Хагакуре',   'player',   600_000,     35,  false],
-        ['p-7',          'Сакура Огами',       'player',   1_200_000,   75,  false],
-        ['p-8',          'Леон Кувата',        'player',   1_000_000,   45,  true],
-        ['p-9',          'Саяка Майзоно',      'player',   1_100_000,   70,  false],
-        ['p-10',         'Чихиро Фуджисаки',   'player',   850_000,     60,  false],
-        ['p-11',         'Мондо Овада',        'elite',    3_000_000,   30,  true],
-        ['p-12',         'Киётака Ишимару',    'player',   1_050_000,   65,  false],
-        ['p-13',         'Хифуми Ямада',       'player',   500_000,     30,  false],
-        ['p-14',         'Джунко Эношима',     'elite',    3_000_000,   30,  true],
-        ['p-15',         'Кируми Тоджо',       'elite',    3_000_000,   30,  true],
-        ['p-kokichi',    'Кокичи Ома',         'player',   1_200_000,   0,   true],
-        ['p-nagito',     'Нагито Комаэда',     'player',   1_000_000,   0,   true],
-        ['p-mikan',      'Микан Цумики',       'player',   800_000,     0,   true],
-        ['p-peko',       'Пеко Пекояма',       'player',   1_000_000,   0,   true],
-        ['p-komaru',     'Комару Наэги',       'player',   1_000_000,   0,   true],
-        ['p-shuichi',    'Шуичи Сайхара',      'player',   1_000_000,   0,   true],
-        ['p-incog-1',    'Инкогнито',          'player',   1_000_000,   0,   true],
-        ['p-incog-2',    'Инкогнито',          'player',   1_000_000,   0,   true],
-        ['p-incog-3',    'Инкогнито',          'player',   1_000_000,   0,   true],
-        // Старые фонды как отдельные аккаунты больше не нужны:
-        // Фонд Тогами объединён с p-treasury, Кируми работает напрямую.
+        ['p-gm',         'Монокума',                 'gm',       999_999_999, 100, true],
+        ['p-treasury',   'Фонд Тогами',              'treasury', 20_000_000,  0,   true],
+        ['p-kirumi-fund','Кредитный резерв Кируми',  'collector', 6_000_000,  0,   true],
+        ['p-queen',      'Селестия Люденберг',       'queen',    5_000_000,   50,  true],
+        // Элита
+        ['p-14',         'Джунко Эношима',           'elite',    2_500_000,   30,  true],
+        ['p-11',         'Мондо Овада',              'elite',    2_500_000,   30,  true],
+        ['p-15',         'Кируми Тоджо',             'elite',    2_500_000,   30,  true],
+        // Активные игроки (по спеке 11 человек = Селестия + 3 элиты + 7 игроков)
+        ['p-kokichi',    'Кокичи Ома',               'player',   1_500_000,   0,   true],
+        ['p-peko',       'Пеко Пекояма',             'player',   1_500_000,   0,   true],
+        ['p-nagito',     'Нагито Комаэда',           'player',   1_000_000,   0,   true],
+        ['p-mikan',      'Микан Цумики',             'player',   1_000_000,   0,   true],
+        ['p-komaru',     'Комару Наэги',             'player',   1_000_000,   0,   true],
+        ['p-shuichi',    'Шуичи Сайхара',            'player',   1_000_000,   0,   true],
+        ['p-8',          'Леон Кувата',              'player',   1_000_000,   0,   true],
+        // Архивные / неактивные (Бьякуя по спеке только inactive)
+        ['p-1',          'Макото Наэги',             'player',   1_000_000,   60,  false],
+        ['p-2',          'Кёко Киригири',            'player',   1_500_000,   70,  false],
+        ['p-3',          'Бьякуя Тогами',            'player',   2_000_000,   80,  false],
+        ['p-4',          'Токо Фукава',              'player',   800_000,     40,  false],
+        ['p-5',          'Аой Асахина',              'player',   900_000,     65,  false],
+        ['p-6',          'Ясухиро Хагакуре',         'player',   600_000,     35,  false],
+        ['p-7',          'Сакура Огами',             'player',   1_200_000,   75,  false],
+        ['p-9',          'Саяка Майзоно',            'player',   1_100_000,   70,  false],
+        ['p-10',         'Чихиро Фуджисаки',         'player',   850_000,     60,  false],
+        ['p-12',         'Киётака Ишимару',          'player',   1_050_000,   65,  false],
+        ['p-13',         'Хифуми Ямада',             'player',   500_000,     30,  false],
+        ['p-incog-1',    'Инкогнито',                'player',   1_000_000,   0,   false],
+        ['p-incog-2',    'Инкогнито',                'player',   1_000_000,   0,   false],
+        ['p-incog-3',    'Инкогнито',                'player',   1_000_000,   0,   false],
       ];
 
       for (const [id, name, status, balance, reputation, is_active] of seed) {

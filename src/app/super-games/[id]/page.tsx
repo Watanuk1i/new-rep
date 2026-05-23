@@ -24,6 +24,8 @@ import { EliteTrialRoom } from '@/components/super-games/EliteTrialRoom';
 import { EliteCandidateTrialRoom } from '@/components/super-games/EliteCandidateTrialRoom';
 import { ThroneRoom } from '@/components/super-games/ThroneRoom';
 import { MiniGameRoom } from '@/components/super-games/MiniGameRoom';
+import { BigGameInfo } from '@/components/super-games/BigGameInfo';
+import { getBigGame } from '@/lib/superGames/catalog';
 import type { Participant } from '@/lib/store/types';
 
 export default function SuperGameDetailPage() {
@@ -59,6 +61,23 @@ export default function SuperGameDetailPage() {
         <CollapsibleBlock title="📋 Правила" content={game.rules} />
       )}
       {/* Поле stakes больше не выводим: дублировало правила и мешало UX. */}
+
+      {/* Информация по типу игры из единого каталога */}
+      {(() => {
+        const tpl = getBigGame(game.type);
+        if (!tpl) return null;
+        return (
+          <details className="glass-strong gold-border p-3 group">
+            <summary className="cursor-pointer flex items-center justify-between text-sm font-bold">
+              <span>📊 Куратор · что можно · что нельзя · долги</span>
+              <span className="text-gold/70 group-open:rotate-180 transition">▾</span>
+            </summary>
+            <div className="mt-3">
+              <BigGameInfo game={tpl} compact />
+            </div>
+          </details>
+        );
+      })()}
 
       {/* Участники */}
       <ParticipantsBlock game={game} isAdmin={isAdmin} />
