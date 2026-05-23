@@ -800,19 +800,20 @@ function DebtCard({
 }
 
 function StatusBadge({ status }: { status: Debt['status'] }) {
-  const map: Record<Debt['status'], string> = {
-    requested:     'bg-amber-500/15 text-amber-300',
-    active:        'bg-blue-500/15 text-blue-300',
-    due_soon:      'bg-amber-400/15 text-amber-300',
-    overdue:       'bg-red-500/15 text-red-300',
-    collection:    'bg-fuchsia-500/15 text-fuchsia-300',
-    restructured:  'bg-cyan-500/15 text-cyan-300',
-    auctioned:     'bg-orange-500/15 text-orange-300',
-    pet_candidate: 'bg-amber-400/20 text-amber-200',
-    paid:          'bg-emerald-500/15 text-emerald-300',
-    closed:        'bg-emerald-500/15 text-emerald-300',
-    declined:      'bg-gray-500/15 text-gray-300',
-    cancelled:     'bg-gray-500/15 text-gray-300',
+  const map: Record<Debt['status'], { cls: string; label: string }> = {
+    requested:     { cls: 'bg-amber-500/15 text-amber-300', label: 'запрошен' },
+    active:        { cls: 'bg-blue-500/15 text-blue-300', label: 'активный' },
+    due_soon:      { cls: 'bg-amber-400/15 text-amber-300', label: 'скоро срок' },
+    overdue:       { cls: 'bg-red-500/15 text-red-300', label: 'просрочен' },
+    collection:    { cls: 'bg-fuchsia-500/15 text-fuchsia-300', label: 'на взыскании' },
+    restructured:  { cls: 'bg-cyan-500/15 text-cyan-300', label: 'реструктурирован' },
+    auctioned:     { cls: 'bg-orange-500/15 text-orange-300', label: 'на аукционе' },
+    pet_candidate: { cls: 'bg-amber-400/20 text-amber-200', label: 'кандидат в питомцы' },
+    paid:          { cls: 'bg-emerald-500/15 text-emerald-300', label: 'погашен' },
+    closed:        { cls: 'bg-emerald-500/15 text-emerald-300', label: 'закрыт' },
+    declined:      { cls: 'bg-gray-500/15 text-gray-300', label: 'отклонён' },
+    cancelled:     { cls: 'bg-gray-500/15 text-gray-300', label: 'отменён' },
   };
-  return <span className={cn('px-1.5 py-0.5 rounded text-[10px]', map[status])}>{status}</span>;
+  const m = map[status];
+  return <span className={cn('px-1.5 py-0.5 rounded text-[10px]', m.cls)}>{m.label}</span>;
 }

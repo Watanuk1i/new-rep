@@ -166,7 +166,8 @@
 
   .scroll-x {
     @apply flex overflow-x-auto -mx-4 px-4 gap-2 pb-2;
-    scrollbar-width: none;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(212, 175, 55, 0.4) transparent;
     /* Snap-выравнивание делает прокрутку понятнее на тач-устройствах */
     scroll-snap-type: x proximity;
     /* Мягкий правый/левый фейд, чтобы было видно, что список длиннее экрана */
@@ -177,7 +178,14 @@
     scroll-snap-align: start;
     flex-shrink: 0;
   }
-  .scroll-x::-webkit-scrollbar { display: none; }
+  .scroll-x::-webkit-scrollbar { height: 6px; }
+  .scroll-x::-webkit-scrollbar-thumb {
+    background: rgba(212, 175, 55, 0.35);
+    border-radius: 3px;
+  }
+  .scroll-x::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 175, 55, 0.6);
+  }
 
   /* Тосты-уведомления */
   .toast-card {

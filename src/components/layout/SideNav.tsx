@@ -15,12 +15,10 @@ const ITEMS = [
   { href: '/pari', icon: '💰', label: 'Пари' },
   { href: '/super-games', icon: '🏟️', label: 'Супер игры' },
   { href: '/togami', icon: '💼', label: 'Фонд Тогами' },
-  { href: '/loans', icon: '💳', label: 'Кредиты' },
-  { href: '/debt-games', icon: '⚔️', label: 'Игры на долг' },
+  { href: '/loans', icon: '💳', label: 'Кредиты / Долги' },
   { href: '/transfers', icon: '💸', label: 'Переводы' },
   { href: '/notifications', icon: '🔔', label: 'События' },
   { href: '/rumors', icon: '👁️', label: 'Слухи' },
-  { href: '/debts', icon: '📜', label: 'Долги' },
   { href: '/rules', icon: '⚖️', label: 'Правила' },
   { href: '/help', icon: '❔', label: 'Помощь' },
   { href: '/history', icon: '🕰️', label: 'История' },
@@ -74,12 +72,13 @@ export function SideNav() {
                 pathname.startsWith('/admin') ? 'bg-gold/10 text-gold border border-gold/20' : 'text-foreground/80 hover:bg-white/5')}>
               <span>⚙️</span><span>Админка</span>
             </Link>
+            {role === 'gm' && (
+              <Link href="/debug" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-muted-foreground hover:bg-white/5">
+                <span>🔧</span><span>Диагностика БД</span>
+              </Link>
+            )}
           </>
         )}
-
-        <Link href="/debug" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-muted-foreground hover:bg-white/5">
-          <span>🔧</span><span>Диагностика БД</span>
-        </Link>
 
         {!currentUser && (
           <Link href="/login" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gold hover:bg-gold/10 mt-2">

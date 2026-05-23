@@ -189,20 +189,20 @@ export function TopBar() {
             )}
             <DrawerLink href="/super-games" icon="🏟️" label="Супер игры" pathname={pathname} />
             <DrawerLink href="/togami" icon="💼" label="Фонд Тогами" pathname={pathname} />
-            <DrawerLink href="/loans" icon="💳" label="Кредиты" pathname={pathname} />
-            <DrawerLink href="/debt-games" icon="⚔️" label="Игры на долг" pathname={pathname} />
+            <DrawerLink href="/loans" icon="💳" label="Кредиты / Долги" pathname={pathname} />
             <DrawerLink href="/transfers" icon="💸" label="Переводы" pathname={pathname} />
             <DrawerLink href="/rumors" icon="👁️" label="Слухи" pathname={pathname} />
-            <DrawerLink href="/debts" icon="📜" label="Долги" pathname={pathname} />
             <DrawerLink href="/rules" icon="⚖️" label="Правила" pathname={pathname} />
             <DrawerLink href="/help" icon="❔" label="Помощь" pathname={pathname} />
             <DrawerLink href="/history" icon="🕰️" label="История" pathname={pathname} />
-            <DrawerLink href="/debug" icon="🔧" label="Диагностика БД" pathname={pathname} />
 
             {(role === 'gm' || role === 'queen') && (
               <>
                 <div className="divider-ornate my-4">✦ Управление ✦</div>
                 <DrawerLink href="/admin" icon="⚙️" label="Админка" pathname={pathname} />
+                {role === 'gm' && (
+                  <DrawerLink href="/debug" icon="🔧" label="Диагностика БД" pathname={pathname} />
+                )}
               </>
             )}
 

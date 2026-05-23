@@ -36,7 +36,7 @@ const GAME_TYPES = [
 
 export default function SuperGamesPage() {
   const { state, role, currentUser } = useStore();
-  const [tab, setTab] = useState<'mine' | 'upcoming' | 'live' | 'archive' | 'catalog'>('upcoming');
+  const [tab, setTab] = useState<'mine' | 'upcoming' | 'live' | 'archive'>('upcoming');
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const isGm = role === 'gm';
   const myId = currentUser?.id ?? null;
@@ -61,17 +61,12 @@ export default function SuperGamesPage() {
         <p className="text-xs text-muted-foreground mt-1">События, за которыми наблюдает вся академия.</p>
       </div>
 
-      {isGm && (
-        <Link href="/admin?tab=super-games" className="btn-primary w-full text-sm">⚙️ Создать супер игру</Link>
-      )}
-
       <div className="scroll-x">
         {([
           ...(myGames.length > 0 ? [{ key: 'mine', label: `Вы участвуете · ${myGames.length}`, icon: '🎯' }] : []),
           { key: 'upcoming', label: 'Скоро', icon: '📅' },
           { key: 'live', label: 'В эфире', icon: '🔴' },
           { key: 'archive', label: 'Архив', icon: '📜' },
-          ...(isGm ? [{ key: 'catalog', label: 'Типы (GM)', icon: '📚' }] : []),
         ] as const).map(t => (
           <button key={t.key} onClick={() => setTab(t.key as any)}
             className={cn('tab-pill', tab === t.key ? 'tab-pill-active' : 'tab-pill-inactive')}>
@@ -128,12 +123,11 @@ export default function SuperGamesPage() {
         })}
       </div>
 
-      {/* Типы игр (показываем только в табе catalog ведущему) */}
-      {tab === 'catalog' && isGm && (
+      {/* Доступные большие игры — каталог теперь публичный, для всех. */}
       <section>
-        <div className="divider-ornate my-3">✦ Типы Больших Игр (GM) ✦</div>
+        <div className="divider-ornate my-3">✦ Доступные большие игры ✦</div>
         <div className="grid grid-cols-2 gap-2">
-          {GAME_TYPES.filter(gt => !gt.hidden).map(gt => (
+          {GAME_TYPES.filter(gt => !gt.hidden && !gt.type.startsWith('mini_')).map(gt => (
             <button key={gt.type} onClick={() => setSelectedType(gt.type)}
               className={cn('glass p-3 text-left active:scale-95 relative',
                 gt.isLive && 'gold-border')}>
@@ -149,7 +143,6 @@ export default function SuperGamesPage() {
           ))}
         </div>
       </section>
-      )}
 
       {selectedType && (
         <div className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center p-3">

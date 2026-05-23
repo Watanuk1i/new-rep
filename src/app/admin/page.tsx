@@ -434,16 +434,43 @@ function PariAdmin() {
 
   return (
     <div className="space-y-4">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-gold/70 mb-2">⚙️ Управление пари</div>
+      {awaiting.length === 0 && open.length === 0 && (
+        <div className="glass p-6 text-center text-sm text-muted-foreground">Активных пари нет.</div>
+      )}
+      {/* Открытые: можно закрыть приём, отменить */}
+      {open.length > 0 && (
+        <section>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-300 mb-2">🟢 Приём открыт</div>
+          <div className="space-y-2">
+            {open.map(m => (
+              <div key={m.id} className="glass p-3">
+                <div className="font-bold text-sm">{m.title}</div>
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  Закрытие: День {m.closes_on_day} · Пул: {(m.bets || []).reduce((s, b) => s + b.amount, 0).toLocaleString('ru-RU')}
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button onClick={() => sb && sb.from('pari').update({ status: 'awaiting_confirmation' }).eq('id', m.id)}
+                    className="btn-secondary text-xs">🔒 Закрыть приём</button>
+                  <button onClick={() => cancelPari(m)} className="btn-danger text-xs">✕ Отменить</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {/* Приём закрыт — можно расчитать или открыть приём заново */}
       {awaiting.length > 0 && (
         <section>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-amber-300 mb-2">⏳ Ожидают решения</div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-amber-300 mb-2">⏳ Приём закрыт · ждёт расчёта</div>
           <div className="space-y-2">
             {awaiting.map(m => (
               <div key={m.id} className="glass-strong gold-border p-4">
                 <div className="font-bold text-sm mb-2">{m.title}</div>
                 <div className="text-[10px] text-muted mb-3">
-                  Пул: {(m.bets || []).reduce((s, b) => s + b.amount, 0)} · Комиссия: {m.commission_pct}%
+                  Пул: {(m.bets || []).reduce((s, b) => s + b.amount, 0).toLocaleString('ru-RU')} · Комиссия: {m.commission_pct}%
                 </div>
+                <div className="text-[10px] text-emerald-300/80 mb-1">Выберите выигрышный вариант — расчёт автоматически:</div>
                 <div className="space-y-1.5">
                   {m.options.map(opt => (
                     <button key={opt.id} onClick={() => resolvePari(m, opt.id)}
@@ -451,40 +478,19 @@ function PariAdmin() {
                         opt.kind === 'yes' ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' :
                         opt.kind === 'no' ? 'bg-red-500/10 border-red-500/40 text-red-300' :
                         'bg-card/40 border-white/8')}>
-                      {opt.kind === 'yes' && '✓ '}{opt.kind === 'no' && '✗ '}{opt.label}
+                      ✓ {opt.kind === 'yes' && 'Да '}{opt.kind === 'no' && 'Нет '}{opt.label}
                     </button>
                   ))}
                 </div>
-                <button onClick={() => cancelPari(m)} className="text-xs text-red-300 mt-3 w-full">
-                  ⚠️ Отменить пари
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-      {open.length > 0 && (
-        <section>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-300 mb-2">🟢 Открытые</div>
-          <div className="space-y-2">
-            {open.map(m => (
-              <div key={m.id} className="glass p-3">
-                <div className="font-bold text-sm">{m.title}</div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  Закрытие: День {m.closes_on_day} · Пул: {(m.bets || []).reduce((s, b) => s + b.amount, 0)}
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => sb && sb.from('pari').update({ status: 'awaiting_confirmation' }).eq('id', m.id)}
-                    className="btn-secondary text-xs flex-1">→ Закрыть приём</button>
-                  <button onClick={() => cancelPari(m)} className="btn-danger text-xs flex-1">✕ Отменить</button>
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <button onClick={() => sb && sb.from('pari').update({ status: 'open' }).eq('id', m.id)}
+                    className="btn-secondary text-xs">🔓 Открыть приём</button>
+                  <button onClick={() => cancelPari(m)} className="btn-danger text-xs">⚠️ Отменить пари</button>
                 </div>
               </div>
             ))}
           </div>
         </section>
-      )}
-      {awaiting.length === 0 && open.length === 0 && (
-        <div className="glass p-6 text-center text-sm text-muted-foreground">Активных пари нет.</div>
       )}
     </div>
   );

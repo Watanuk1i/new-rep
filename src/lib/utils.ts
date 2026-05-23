@@ -50,9 +50,16 @@ export function getStatusColor(status: string): string {
   return colors[status] || 'bg-gray-500/20 text-gray-400';
 }
 
-/** Признак "системного" участника (Ведущий или Казна) — таких не показываем в списках. */
+/** Признак "системного" участника (Ведущий, Казна, Фонд Тогами, Кредитный резерв Кируми). */
 export function isSystemParticipant(p: { status?: string; id?: string }): boolean {
-  return p.status === 'gm' || p.status === 'treasury' || p.id === 'p-gm' || p.id === 'p-treasury';
+  if (!p.id) return p.status === 'gm' || p.status === 'treasury';
+  return p.status === 'gm'
+    || p.status === 'treasury'
+    || p.id === 'p-gm'
+    || p.id === 'p-treasury'
+    || p.id === 'p-togami-fund'
+    || p.id === 'p-kirumi-fund'
+    || p.id === 'p-kirumi-reserve';
 }
 
 /** Реальный игрок (не Ведущий, не Казна). Фильтр для списков и игр. */

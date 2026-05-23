@@ -86,8 +86,8 @@ export default function CreatePariPage() {
           <span className="text-[10px] text-gold/80">{PARI_TEMPLATES.length} шт</span>
         </summary>
         <div className="mt-3 space-y-2">
-          {/* Горизонтальный таб-слайдер по играм */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scroll-x">
+          {/* Группы по играм: на ПК — flex-wrap, на мобильном — горизонтальный скролл */}
+          <div className="flex flex-wrap gap-1.5 pb-1">
             {groups.map(g => (
               <button
                 key={g}

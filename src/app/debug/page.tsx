@@ -1,7 +1,9 @@
 'use client';
 
-// Страница диагностики Supabase. Открой /debug чтобы проверить подключение.
+// Страница диагностики Supabase. Только для GM.
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useStore } from '@/lib/store/StoreProvider';
 import { getSupabase } from '@/lib/supabase/client';
 
 interface CheckResult {
@@ -26,6 +28,7 @@ interface RawDump {
 }
 
 export default function DebugPage() {
+  const { role } = useStore();
   const [checks, setChecks] = useState<CheckResult[]>([]);
   const [running, setRunning] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<string>('—');
@@ -206,6 +209,16 @@ export default function DebugPage() {
   };
 
   return (
+    <>
+      {role !== 'gm' && (
+        <div className="px-4 py-12 text-center max-w-md mx-auto">
+          <div className="text-5xl mb-3">🔒</div>
+          <h2 className="font-heading text-xl font-bold mb-2">Доступ запрещён</h2>
+          <p className="text-sm text-muted-foreground mb-4">Диагностика БД доступна только Ведущему.</p>
+          <Link href="/" className="btn-secondary inline-flex">На главную</Link>
+        </div>
+      )}
+      {role === 'gm' && (
     <div className="px-4 py-6 max-w-2xl mx-auto space-y-4">
       <div className="glass-strong gold-border p-4">
         <h1 className="font-heading text-xl font-bold text-gradient-gold">🔧 Диагностика Supabase</h1>
@@ -328,5 +341,7 @@ export default function DebugPage() {
         </ol>
       </div>
     </div>
+      )}
+    </>
   );
 }
