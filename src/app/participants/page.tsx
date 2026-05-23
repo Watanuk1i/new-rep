@@ -38,9 +38,10 @@ export default function ParticipantsPage() {
       arr = arr.filter(p => p.status === 'player'
         && !(p.balance >= 3_000_000 || p.reputation >= 70));
     } else if (filter === 'candidate') {
-      // Претенденты в Элиту
-      arr = arr.filter(p => p.status === 'player'
-        && (p.balance >= 3_000_000 || p.reputation >= 70));
+      // Претенденты в Элиту: явно проставленный статус 'candidate'
+      // или автоматически по балансу/репутации
+      arr = arr.filter(p => p.status === 'candidate'
+        || (p.status === 'player' && (p.balance >= 3_000_000 || p.reputation >= 70)));
     } else if (filter === 'pet') {
       arr = arr.filter(p => p.status === 'pet');
     } else if (filter === 'with_pet') {

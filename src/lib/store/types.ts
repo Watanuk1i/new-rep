@@ -1,6 +1,6 @@
 // Типы для Supabase-стора. Совпадают с колонками таблиц БД.
 
-export type ParticipantStatus = 'player' | 'pet' | 'master' | 'elite' | 'queen' | 'gm' | 'collector' | 'treasury';
+export type ParticipantStatus = 'player' | 'candidate' | 'pet' | 'master' | 'elite' | 'queen' | 'gm' | 'collector' | 'treasury';
 export type Role = 'guest' | 'player' | 'queen' | 'gm' | 'collector';
 
 export interface Participant {

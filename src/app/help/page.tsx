@@ -152,6 +152,34 @@ function SOSBlock() {
     setCreating(false);
   };
 
+  // Быстрый вызов: одна кнопка — без формы. Просто шлёт уведомление ведущему.
+  const quickCall = async () => {
+    if (!sb || !currentUser || busy) return;
+    setBusy(true);
+    await sb.from('help_requests').insert({
+      id: uid('hr'),
+      author_id: currentUser.id,
+      topic: 'Срочный вызов',
+      text: 'Игрок просит помощь Ведущего.',
+      status: 'open',
+    });
+    await sb.from('notifications').insert([
+      {
+        id: uid('n'), recipient_id: 'p-gm', type: 'help_request_urgent',
+        title: '🚨 Вас вызывают!',
+        body: `${currentUser.display_name} просит помощь`,
+        link_url: '/help', is_read: false,
+      },
+      {
+        id: uid('n'), recipient_id: 'p-queen', type: 'help_request_urgent',
+        title: '🚨 Вас вызывают!',
+        body: `${currentUser.display_name} просит помощь`,
+        link_url: '/help', is_read: false,
+      },
+    ]);
+    setBusy(false);
+  };
+
   const updateStatus = async (id: string, status: HelpRequest['status'], resolution?: string) => {
     if (!sb) return;
     const r = requests.find(x => x.id === id);
@@ -213,9 +241,15 @@ function SOSBlock() {
       </div>
 
       {!creating ? (
-        <button onClick={() => setCreating(true)} className="btn-primary w-full text-sm">
-          🚨 Уведомить Ведущего о помощи
-        </button>
+        <div className="space-y-2">
+          <button onClick={quickCall} disabled={busy}
+            className="btn-primary w-full text-base bg-gradient-to-r from-rose-600 to-rose-800 active:from-rose-700 active:to-rose-900">
+            🚨 Вызвать Ведущего
+          </button>
+          <button onClick={() => setCreating(true)} className="btn-secondary w-full text-xs">
+            ✏️ Описать проблему подробнее
+          </button>
+        </div>
       ) : (
         <div className="space-y-2">
           <input value={topic} onChange={e => setTopic(e.target.value)}
@@ -229,7 +263,7 @@ function SOSBlock() {
               className="btn-secondary text-xs">Отмена</button>
             <button onClick={submit} disabled={!text.trim() || busy}
               className="btn-primary text-xs">
-              {busy ? '...' : '🚨 Вызвать Ведущего'}
+              {busy ? '...' : '🚨 Отправить и вызвать'}
             </button>
           </div>
         </div>

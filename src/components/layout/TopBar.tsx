@@ -190,6 +190,7 @@ export function TopBar() {
             <DrawerLink href="/super-games" icon="🏟️" label="Супер игры" pathname={pathname} />
             <DrawerLink href="/togami" icon="💼" label="Фонд Тогами" pathname={pathname} />
             <DrawerLink href="/loans" icon="💳" label="Кредиты / Долги" pathname={pathname} />
+            <DrawerLink href="/contracts" icon="📜" label="Договоры" pathname={pathname} />
             <DrawerLink href="/transfers" icon="💸" label="Переводы" pathname={pathname} />
             <DrawerLink href="/rumors" icon="👁️" label="Слухи" pathname={pathname} />
             <DrawerLink href="/rules" icon="⚖️" label="Правила" pathname={pathname} />

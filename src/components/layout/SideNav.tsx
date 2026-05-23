@@ -16,6 +16,7 @@ const ITEMS = [
   { href: '/super-games', icon: '🏟️', label: 'Супер игры' },
   { href: '/togami', icon: '💼', label: 'Фонд Тогами' },
   { href: '/loans', icon: '💳', label: 'Кредиты / Долги' },
+  { href: '/contracts', icon: '📜', label: 'Договоры' },
   { href: '/transfers', icon: '💸', label: 'Переводы' },
   { href: '/notifications', icon: '🔔', label: 'События' },
   { href: '/rumors', icon: '👁️', label: 'Слухи' },

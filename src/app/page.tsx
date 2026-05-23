@@ -112,11 +112,11 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Претенденты в Элиту: игроки с балансом 3M+ или репутацией 70+ */}
+      {/* Претенденты в Элиту: игроки со статусом candidate или с балансом 3M+ / репутацией 70+ */}
       {(() => {
         const candidates = players.filter(p =>
-          p.is_active && p.status === 'player' &&
-          (p.balance >= 3_000_000 || p.reputation >= 70)
+          p.is_active && (p.status === 'candidate' ||
+            (p.status === 'player' && (p.balance >= 3_000_000 || p.reputation >= 70)))
         );
         if (candidates.length === 0) return null;
         return (

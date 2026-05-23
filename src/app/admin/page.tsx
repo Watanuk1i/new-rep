@@ -14,7 +14,10 @@ import type { Participant, ParticipantStatus, PariMarket, Debt, Rumor, ContentBl
 
 export const dynamic = 'force-dynamic';
 
-const TABS = [
+// roles:
+// - 'gm' — полный доступ ко всем табам
+// - 'queen' (Селестия) — ограниченный доступ
+const TABS_GM = [
   { key: 'overview', label: 'Обзор', icon: '📊' },
   { key: 'season', label: 'Сезон/День', icon: '📅' },
   { key: 'announce', label: 'Объявления', icon: '📢' },
@@ -28,6 +31,9 @@ const TABS = [
   { key: 'icons', label: 'Иконки', icon: '🎭' },
   { key: 'content', label: 'Контент', icon: '📝' },
 ];
+// Селестия видит только: пари, супер-игры, слухи, объявления.
+const TABS_QUEEN_KEYS = new Set(['announce', 'pari', 'super-games', 'rumors', 'overview']);
+const TABS_QUEEN = TABS_GM.filter(t => TABS_QUEEN_KEYS.has(t.key));
 
 export default function AdminPage() {
   return (
@@ -44,10 +50,19 @@ function AdminInner() {
   const [tab, setTab] = useState(sp.get('tab') || 'overview');
   const [editingParticipant, setEditingParticipant] = useState<string | null>(null);
 
+  const TABS = role === 'gm' ? TABS_GM : TABS_QUEEN;
+  const allowedKeys = new Set(TABS.map(t => t.key));
+
   useEffect(() => {
     const t = sp.get('tab');
     if (t) setTab(t);
   }, [sp]);
+
+  // Если Селестия попала на запрещённый таб — кидаем на overview
+  useEffect(() => {
+    if (!allowedKeys.has(tab)) setTab(TABS[0]?.key ?? 'overview');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
 
   if (role !== 'gm' && role !== 'queen') {
     return (
@@ -66,7 +81,9 @@ function AdminInner() {
         <div className="text-3xl">⚙️</div>
         <div>
           <div className="text-[10px] uppercase tracking-widest text-gold/70">Управление</div>
-          <h1 className="font-heading text-xl font-bold text-gradient-gold leading-tight">Панель Ведущего</h1>
+          <h1 className="font-heading text-xl font-bold text-gradient-gold leading-tight">
+            {role === 'gm' ? 'Панель Ведущего' : 'Панель Селестии'}
+          </h1>
         </div>
       </div>
 
@@ -82,22 +99,22 @@ function AdminInner() {
         ))}
       </div>
 
-      {tab === 'overview' && <Overview />}
-      {tab === 'season' && <SeasonDay />}
-      {tab === 'announce' && <AnnounceTab />}
-      {tab === 'participants' && (editingParticipant
+      {tab === 'overview' && allowedKeys.has('overview') && <Overview />}
+      {tab === 'season' && allowedKeys.has('season') && <SeasonDay />}
+      {tab === 'announce' && allowedKeys.has('announce') && <AnnounceTab />}
+      {tab === 'participants' && allowedKeys.has('participants') && (editingParticipant
         ? <EditParticipant id={editingParticipant} onBack={() => setEditingParticipant(null)} />
         : <ParticipantsList onEdit={setEditingParticipant} />)}
-      {tab === 'accounts' && <AccountsTab />}
-      {tab === 'pari' && <PariAdmin />}
-      {tab === 'super-games' && <SuperGamesAdmin />}
-      {tab === 'treasury' && <TreasuryTab />}
-      {tab === 'debts' && <DebtsAdmin />}
-      {tab === 'rumors' && <RumorsAdmin />}
-      {tab === 'icons' && (editingParticipant
+      {tab === 'accounts' && allowedKeys.has('accounts') && <AccountsTab />}
+      {tab === 'pari' && allowedKeys.has('pari') && <PariAdmin />}
+      {tab === 'super-games' && allowedKeys.has('super-games') && <SuperGamesAdmin />}
+      {tab === 'treasury' && allowedKeys.has('treasury') && <TreasuryTab />}
+      {tab === 'debts' && allowedKeys.has('debts') && <DebtsAdmin />}
+      {tab === 'rumors' && allowedKeys.has('rumors') && <RumorsAdmin />}
+      {tab === 'icons' && allowedKeys.has('icons') && (editingParticipant
         ? <IconEditor id={editingParticipant} onBack={() => setEditingParticipant(null)} />
         : <IconsList onEdit={setEditingParticipant} />)}
-      {tab === 'content' && <ContentAdmin />}
+      {tab === 'content' && allowedKeys.has('content') && <ContentAdmin />}
     </div>
   );
 }
@@ -316,6 +333,7 @@ function EditParticipant({ id, onBack }: { id: string; onBack: () => void }) {
         <div className="grid grid-cols-2 gap-1.5">
           {[
             { v: 'player', label: 'Игрок' },
+            { v: 'candidate', label: '🌟 Кандидат' },
             { v: 'pet', label: 'Питомец' },
             { v: 'elite', label: 'Элита' },
             { v: 'queen', label: 'Королева' },
