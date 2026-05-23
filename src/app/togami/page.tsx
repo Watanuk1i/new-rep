@@ -30,13 +30,18 @@ export default function TogamiPage() {
     d.creditor_id === TOGAMI_FUND_ID && (d.status === 'active' || d.status === 'overdue'),
   );
 
-  // Игроки с минусовым/малым балансом
+  // Игроки с минусовым/малым балансом — только те, у кого ЕСТЬ долги и они НЕ Питомцы.
   const lowBalancePlayers = useMemo(() => {
+    const debtorIds = new Set(
+      state.debts
+        .filter(d => d.status === 'active' || d.status === 'overdue' || d.status === 'collection' || d.status === 'pet_candidate')
+        .map(d => d.debtor_id),
+    );
     return [...state.participants]
-      .filter(p => isPlayer(p))
+      .filter(p => isPlayer(p) && p.status !== 'pet' && debtorIds.has(p.id))
       .sort((a, b) => a.balance - b.balance)
       .slice(0, 10);
-  }, [state.participants]);
+  }, [state.participants, state.debts]);
 
   // Топ должников Фонду
   const topFundDebtors = useMemo(() => {
@@ -124,19 +129,21 @@ export default function TogamiPage() {
         </div>
       )}
 
-      {/* Низкие балансы */}
-      <div className="glass p-4">
-        <div className="section-title text-sm mb-2">🔻 Игроки с худшим балансом</div>
-        <div className="space-y-1">
-          {lowBalancePlayers.map(p => (
-            <Link key={p.id} href={`/profile/${p.id}`} className="flex items-center gap-2 p-1.5 rounded-xl bg-card/30 hover:bg-card/50 transition text-xs">
-              <CharacterIcon participant={p} size="xs" ringless />
-              <span className="flex-1 truncate">{p.display_name}</span>
-              <Yen amount={p.balance} className={cn('text-[11px]', p.balance < 100_000 ? 'text-red-300' : 'text-muted-foreground')} iconClass="w-3 h-3" />
-            </Link>
-          ))}
+      {/* Низкие балансы — только должники и не питомцы */}
+      {lowBalancePlayers.length > 0 && (
+        <div className="glass p-4">
+          <div className="section-title text-sm mb-2">🔻 Должники с худшим балансом</div>
+          <div className="space-y-1">
+            {lowBalancePlayers.map(p => (
+              <Link key={p.id} href={`/profile/${p.id}`} className="flex items-center gap-2 p-1.5 rounded-xl bg-card/30 hover:bg-card/50 transition text-xs">
+                <CharacterIcon participant={p} size="xs" ringless />
+                <span className="flex-1 truncate">{p.display_name}</span>
+                <Yen amount={p.balance} className={cn('text-[11px]', p.balance < 100_000 ? 'text-red-300' : 'text-muted-foreground')} iconClass="w-3 h-3" />
+              </Link>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* История операций Фонда */}
       <div className="glass p-4">

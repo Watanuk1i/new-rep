@@ -47,7 +47,9 @@ export function MiniGameLobby({ game, state: gs, onStart, minPlayers = 2 }: Prop
   const meReady = !!currentUser && readyIds.has(currentUser.id);
   const inGame = !!currentUser && players.some(p => p.id === currentUser.id);
   const isCreator = !!currentUser && (game.participant_ids ?? [])[0] === currentUser.id;
-  const canStart = (isCreator || isAdmin) && allReady;
+  // Создатель/админ может начать игру когда есть хотя бы minPlayers (даже если не все нажали «готов»).
+  const enoughPlayers = players.length >= minPlayers;
+  const canStart = (isCreator || isAdmin) && enoughPlayers;
   const needsGm = !!gs.needs_gm_approval;
   const isOpen = !!(game.state as any)?.is_open;
 
@@ -167,9 +169,14 @@ export function MiniGameLobby({ game, state: gs, onStart, minPlayers = 2 }: Prop
             className={cn('btn-success w-full', (!canStart || busy || needsGm) && 'opacity-50 cursor-not-allowed')}>
             {needsGm ? '⏳ Ждём апрува ведущего' :
              players.length < minPlayers ? `▶ Нужно ещё ${minPlayers - players.length} игр.` :
-             !allReady ? `▶ Все нажмут «Готов» (${readyIds.size}/${players.length})` :
+             !allReady ? `▶ Начать (${readyIds.size}/${players.length} готовы)` :
              '▶ Начать игру'}
           </button>
+        )}
+        {(isCreator || isAdmin) && !allReady && enoughPlayers && (
+          <div className="text-[10px] text-center text-amber-300/80">
+            Не все нажали «Готов», но вы можете стартовать в любой момент.
+          </div>
         )}
         {(isCreator || isAdmin) && (
           <button onClick={cancelGame} disabled={busy} className="btn-danger w-full text-xs">

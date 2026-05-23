@@ -20,6 +20,7 @@ export const dynamic = 'force-dynamic';
 // - 'queen' (Селестия) — ограниченный доступ
 const TABS_GM = [
   { key: 'overview', label: 'Обзор', icon: '📊' },
+  { key: 'activity', label: 'Действия', icon: '📡' },
   { key: 'season', label: 'Сезон/День', icon: '📅' },
   { key: 'announce', label: 'Объявления', icon: '📢' },
   { key: 'participants', label: 'Игроки', icon: '👥' },
@@ -101,6 +102,7 @@ function AdminInner() {
       </div>
 
       {tab === 'overview' && allowedKeys.has('overview') && <Overview />}
+      {tab === 'activity' && allowedKeys.has('activity') && <ActivityFeed />}
       {tab === 'season' && allowedKeys.has('season') && <SeasonDay />}
       {tab === 'announce' && allowedKeys.has('announce') && <AnnounceTab />}
       {tab === 'participants' && allowedKeys.has('participants') && (editingParticipant
@@ -155,6 +157,182 @@ function Card({ label, value, icon, highlight }: { label: string; value: number;
       <div className="text-[10px] text-muted uppercase tracking-wider mt-1">{label}</div>
     </div>
   );
+}
+
+// ============================================================
+// ActivityFeed — лента действий всех игроков (для ведущего).
+// Сводит history + transfers + loan_requests + kirumi_contracts + help_requests
+// + super_games + challenges в одну ленту с фильтрами.
+// ============================================================
+function ActivityFeed() {
+  const { state } = useStore();
+  const sb = getSupabase();
+  const [items, setItems] = useState<ActivityItem[]>([]);
+  const [filter, setFilter] = useState<'all' | 'money' | 'games' | 'requests'>('all');
+
+  useEffect(() => {
+    if (!sb) return;
+    let alive = true;
+    const load = async () => {
+      const [
+        { data: hist },
+        { data: trs },
+        { data: lreq },
+        { data: kc },
+        { data: hr },
+        { data: sg },
+        { data: ch },
+      ] = await Promise.all([
+        sb.from('history').select('*').order('created_at', { ascending: false }).limit(80),
+        sb.from('transfers').select('*').order('created_at', { ascending: false }).limit(40),
+        sb.from('loan_requests').select('*').order('created_at', { ascending: false }).limit(20),
+        sb.from('kirumi_contracts').select('*').order('created_at', { ascending: false }).limit(20),
+        sb.from('help_requests').select('*').order('created_at', { ascending: false }).limit(20),
+        sb.from('super_games').select('*').order('created_at', { ascending: false }).limit(30),
+        sb.from('challenges').select('*').order('created_at', { ascending: false }).limit(30),
+      ]);
+      if (!alive) return;
+      const out: ActivityItem[] = [];
+
+      for (const h of (hist ?? []) as any[]) {
+        const p = state.participants.find(x => x.id === h.participant_id);
+        out.push({
+          ts: h.created_at, kind: 'money',
+          icon: '💸', who: p?.display_name ?? h.participant_id,
+          text: h.description ?? h.action,
+          amount: h.amount,
+          link: h.link_url,
+        });
+      }
+      for (const t of (trs ?? []) as any[]) {
+        const sender = state.participants.find(x => x.id === t.sender_id);
+        const recv = state.participants.find(x => x.id === t.recipient_id);
+        out.push({
+          ts: t.created_at, kind: 'money',
+          icon: '↔', who: sender?.display_name ?? t.sender_id,
+          text: `${sender?.display_name ?? '?'} → ${recv?.display_name ?? '?'}: ${t.comment ?? ''}`,
+          amount: t.amount,
+          link: '/transfers',
+        });
+      }
+      for (const r of (lreq ?? []) as any[]) {
+        const p = state.participants.find(x => x.id === r.borrower_id);
+        out.push({
+          ts: r.created_at, kind: 'requests',
+          icon: '💳', who: p?.display_name ?? r.borrower_id,
+          text: `Запрос кредита (${r.status}): ${r.requested_amount?.toLocaleString('ru-RU')} ¥${r.reason ? ` · ${r.reason}` : ''}`,
+          link: '/loans',
+        });
+      }
+      for (const c of (kc ?? []) as any[]) {
+        const a = state.participants.find(x => x.id === c.creator_id);
+        const b = state.participants.find(x => x.id === c.counterparty_id);
+        out.push({
+          ts: c.created_at, kind: 'requests',
+          icon: '📜', who: a?.display_name ?? c.creator_id,
+          text: `Договор Кируми ${c.status}: ${a?.display_name ?? '?'} ↔ ${b?.display_name ?? '?'} · ${c.amount?.toLocaleString('ru-RU')} ¥`,
+          link: '/contracts',
+        });
+      }
+      for (const h of (hr ?? []) as any[]) {
+        const p = state.participants.find(x => x.id === h.user_id);
+        out.push({
+          ts: h.created_at, kind: 'requests',
+          icon: '🆘', who: p?.display_name ?? h.user_id,
+          text: `Помощь: ${h.message ? h.message.slice(0, 60) : '(вызов ведущего)'} · ${h.status}`,
+          link: '/help',
+        });
+      }
+      for (const g of (sg ?? []) as any[]) {
+        out.push({
+          ts: g.created_at, kind: 'games',
+          icon: g.type.startsWith('mini_') || g.type === 'liars_bar' ? '🎯' : '🏟️',
+          who: '—',
+          text: `Создана ${g.type.startsWith('mini_') ? 'малая' : 'большая'} игра: ${g.title} · ${g.status}${g.participant_ids?.length ? ` · ${g.participant_ids.length} игр.` : ''}`,
+          link: `/super-games/${g.id}`,
+        });
+      }
+      for (const c of (ch ?? []) as any[]) {
+        const cr = state.participants.find(x => x.id === c.creator_id);
+        const opp = c.opponent_id ? state.participants.find(x => x.id === c.opponent_id) : null;
+        out.push({
+          ts: c.created_at, kind: 'games',
+          icon: '⚔️', who: cr?.display_name ?? c.creator_id,
+          text: `Вызов ${c.game_type} ${c.status}: ${cr?.display_name ?? '?'} → ${opp?.display_name ?? 'открытый'} · ${c.stake_amount?.toLocaleString('ru-RU')} ¥`,
+          link: '/games',
+        });
+      }
+      out.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+      setItems(out.slice(0, 200));
+    };
+    load();
+    const id = setInterval(load, 6000);
+    return () => { alive = false; clearInterval(id); };
+  }, [sb, state.participants]);
+
+  const filtered = items.filter(i => filter === 'all' || i.kind === filter);
+
+  return (
+    <div className="space-y-3">
+      <div className="glass-strong gold-border p-4">
+        <div className="text-[10px] uppercase tracking-widest text-gold/70">📡 Действия игроков</div>
+        <h2 className="font-heading text-lg font-bold mt-1">Кто что делает прямо сейчас</h2>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Сводка переводов, ставок, запросов кредитов, договоров, вызовов помощи и созданных игр.
+          Обновляется каждые 6 секунд.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {[
+          { k: 'all', l: 'Всё', i: '📡' },
+          { k: 'money', l: 'Деньги', i: '💸' },
+          { k: 'games', l: 'Игры', i: '⚔️' },
+          { k: 'requests', l: 'Запросы', i: '📨' },
+        ].map(f => (
+          <button key={f.k} onClick={() => setFilter(f.k as any)}
+            className={cn('px-2.5 py-1 rounded-md text-[10px] flex items-center gap-1',
+              filter === f.k ? 'bg-gold/20 text-gold border border-gold/40' : 'bg-card/40 text-muted-foreground border border-white/5')}>
+            <span>{f.i}</span><span>{f.l}</span>
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="glass p-6 text-center text-sm text-muted-foreground">Действий пока нет.</div>
+      ) : (
+        <div className="space-y-1">
+          {filtered.map((it, i) => (
+            <div key={i} className="glass p-2 text-xs flex items-start gap-2">
+              <div className="text-base shrink-0">{it.icon}</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] truncate">{it.text}</div>
+                <div className="text-[9px] text-muted-foreground flex items-center gap-2">
+                  <span>{new Date(it.ts).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                  {it.amount != null && (
+                    <Yen amount={Math.abs(it.amount)} className={cn('text-[10px]', it.amount > 0 ? 'text-emerald-300' : 'text-red-300')} iconClass="w-2.5 h-2.5" />
+                  )}
+                </div>
+              </div>
+              {it.link && (
+                <Link href={it.link} className="text-[9px] text-gold hover:text-gold-light shrink-0">→</Link>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ActivityItem {
+  ts: string;
+  kind: 'money' | 'games' | 'requests';
+  icon: string;
+  who: string;
+  text: string;
+  amount?: number | null;
+  link?: string;
 }
 
 function SeasonDay() {
