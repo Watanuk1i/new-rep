@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import { transferBetweenPlayers, chargeToTreasury, payoutFromTreasury } from '@/lib/store/tx';
 import { PlayingCardView } from '@/components/ui/PlayingCardView';
+import { Coin3D, CoinSideLabel } from '@/components/ui/Coin3D';
 import {
   type PlayingCard, makeDeck52, shuffle, bjHandScore, cardLabel,
 } from '@/lib/minigames/cards';
@@ -833,6 +834,7 @@ function RouletteGame(p: GameProps) {
 function RPSGame(p: GameProps) {
   const { challenge, rd, isCreator, creator, opponent, sb, notify, addHistory, gameLabel, gameType } = p;
   const [busy, setBusy] = useState(false);
+  const [revealing, setRevealing] = useState(false);
 
   const round = rd.rps_round ?? 1;
   const myChoice = isCreator ? rd.rps_creator_choice : rd.rps_opponent_choice;
@@ -840,6 +842,16 @@ function RPSGame(p: GameProps) {
   const myScore = (isCreator ? rd.rps_creator_score : rd.rps_opponent_score) ?? 0;
   const oppScore = (isCreator ? rd.rps_opponent_score : rd.rps_creator_score) ?? 0;
   const history = rd.rps_history ?? [];
+  const decisiveRoundsPlayed = history.filter(h => h.winner !== 'tie').length;
+
+  // Анимация «трясущегося кулака» во время выбора
+  useEffect(() => {
+    if (myChoice && oppChoice && !revealing) {
+      setRevealing(true);
+      const t = setTimeout(() => setRevealing(false), 1100);
+      return () => clearTimeout(t);
+    }
+  }, [myChoice, oppChoice, revealing]);
 
   const choose = async (choice: RPSChoice) => {
     if (busy || myChoice) return;
@@ -851,7 +863,6 @@ function RPSGame(p: GameProps) {
       return patch;
     });
 
-    // Если оба выбрали — раскрываем
     const cc = updated.rps_creator_choice;
     const oc = updated.rps_opponent_choice;
     if (cc && oc) {
@@ -862,24 +873,40 @@ function RPSGame(p: GameProps) {
           || (cc === 'scissors' && oc === 'paper')) return 'creator';
         return 'opponent';
       })();
-      const newCScore = (updated.rps_creator_score ?? 0) + (winRound === 'creator' ? 1 : 0);
-      const newOScore = (updated.rps_opponent_score ?? 0) + (winRound === 'opponent' ? 1 : 0);
-      const newHistory = [...(updated.rps_history ?? []), { round: updated.rps_round ?? 1, creator: cc, opponent: oc, winner: winRound }];
+      const oldCScore = updated.rps_creator_score ?? 0;
+      const oldOScore = updated.rps_opponent_score ?? 0;
+      const newCScore = oldCScore + (winRound === 'creator' ? 1 : 0);
+      const newOScore = oldOScore + (winRound === 'opponent' ? 1 : 0);
+      const newHistory = [
+        ...(updated.rps_history ?? []),
+        { round: updated.rps_round ?? 1, creator: cc, opponent: oc, winner: winRound },
+      ];
 
-      // Через 1.2с — следующий раунд или финал
       setTimeout(async () => {
         const r = updated.rps_round ?? 1;
-        if (r >= 3 || newCScore >= 2 || newOScore >= 2) {
-          const wins: 'creator' | 'opponent' = newCScore > newOScore ? 'creator'
-            : newOScore > newCScore ? 'opponent'
-            : (Math.random() < 0.5 ? 'creator' : 'opponent');
-          const details = `Счёт ${newCScore}:${newOScore} · ${newHistory.map(h => `R${h.round}:${rpsLabel(h.creator)}/${rpsLabel(h.opponent)}`).join(' · ')}`;
+        // Победитель — первый кто набрал 2 победы (best of 3 решающих)
+        const someoneWon = newCScore >= 2 || newOScore >= 2;
+        // Если решающих раундов сыграно 3 и всё ещё ничейный итог — конец, ничья → возврат
+        const tooManyTies = newHistory.filter(h => h.winner === 'tie').length >= 5; // safety
+        if (someoneWon || tooManyTies) {
+          let wins: 'creator' | 'opponent';
+          if (newCScore > newOScore) wins = 'creator';
+          else if (newOScore > newCScore) wins = 'opponent';
+          else wins = Math.random() < 0.5 ? 'creator' : 'opponent';
+          const details = `Счёт ${newCScore}:${newOScore} · ${newHistory.map(h => {
+            const sym = h.creator === 'rock' ? '✊' : h.creator === 'paper' ? '✋' : '✌️';
+            const sym2 = h.opponent === 'rock' ? '✊' : h.opponent === 'paper' ? '✋' : '✌️';
+            return `R${h.round}: ${sym} vs ${sym2}${h.winner === 'tie' ? ' (ничья)' : ''}`;
+          }).join(' · ')}`;
           await finishMatch({ sb, challenge, creator, opponent, winnerSide: wins, details, notify, addHistory, gameLabel, gameType,
             rdExtra: { ...updated, rps_creator_score: newCScore, rps_opponent_score: newOScore, rps_history: newHistory },
           });
         } else {
+          // При ничьей раунд НЕ засчитывается — продолжаем тот же номер с новым выбором
+          // При победе — следующий раунд
+          const nextRound = winRound === 'tie' ? r : r + 1;
           await patchResult(sb, challenge.id, {
-            rps_round: r + 1,
+            rps_round: nextRound,
             rps_creator_choice: undefined,
             rps_opponent_choice: undefined,
             rps_creator_score: newCScore,
@@ -893,22 +920,33 @@ function RPSGame(p: GameProps) {
   };
 
   const ICON: Record<RPSChoice, string> = { rock: '✊', paper: '✋', scissors: '✌️' };
+  const lastEvent = history[history.length - 1];
+  const showLastTie = lastEvent?.winner === 'tie' && !myChoice;
 
   return (
     <div className="space-y-3">
       <div className="glass p-3 text-center">
-        <div className="text-[10px] uppercase text-gold/70">Раунд {round} из 3</div>
+        <div className="text-[10px] uppercase text-gold/70">Раунд {round} (до 2 побед)</div>
         <div className="text-sm font-bold mt-1">Счёт: <span className="text-emerald-400">{myScore}</span> : <span className="text-red-400">{oppScore}</span></div>
+        {showLastTie && (
+          <div className="mt-1 text-[10px] text-amber-300 animate-pulse">
+            ⚖ Ничья — раунд переигрывается
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className={cn('glass p-4 text-center', myChoice && 'gold-border')}>
           <div className="text-[10px] uppercase text-gold/70">Вы</div>
-          <div className="text-5xl mt-2">{myChoice ? ICON[myChoice] : '❓'}</div>
+          <div className={cn('text-6xl mt-2', revealing && 'animate-shake')} style={{ minHeight: '4rem' }}>
+            {revealing ? '✊' : (myChoice ? ICON[myChoice] : '❓')}
+          </div>
         </div>
         <div className={cn('glass p-4 text-center', oppChoice && 'gold-border')}>
           <div className="text-[10px] uppercase text-gold/70">{isCreator ? opponent.display_name : creator.display_name}</div>
-          <div className="text-5xl mt-2">{myChoice && oppChoice ? ICON[oppChoice] : (oppChoice ? '🔒' : '⏳')}</div>
+          <div className={cn('text-6xl mt-2', revealing && 'animate-shake')} style={{ minHeight: '4rem' }}>
+            {revealing ? '✊' : (myChoice && oppChoice ? ICON[oppChoice] : (oppChoice ? '🔒' : '⏳'))}
+          </div>
         </div>
       </div>
 
@@ -917,8 +955,8 @@ function RPSGame(p: GameProps) {
           <div className="text-xs text-muted-foreground text-center mb-2">Выберите ход</div>
           <div className="grid grid-cols-3 gap-2">
             {(['rock','paper','scissors'] as RPSChoice[]).map(c => (
-              <button key={c} onClick={() => choose(c)} disabled={busy} className="glass p-3 text-center text-3xl active:scale-95 hover:gold-border">
-                {ICON[c]}
+              <button key={c} onClick={() => choose(c)} disabled={busy} className="glass p-3 text-center active:scale-95 hover:gold-border">
+                <div className="text-3xl">{ICON[c]}</div>
                 <div className="text-[10px] mt-1 text-muted-foreground">{rpsLabel(c)}</div>
               </button>
             ))}
@@ -926,20 +964,28 @@ function RPSGame(p: GameProps) {
         </div>
       ) : !oppChoice ? (
         <div className="glass p-3 text-center text-xs text-muted-foreground">Жду выбор соперника...</div>
+      ) : revealing ? (
+        <div className="glass p-3 text-center text-xs text-amber-300 animate-pulse">⚔️ Раскрытие...</div>
       ) : (
-        <div className="glass p-3 text-center text-xs text-muted-foreground">Раскрытие...</div>
+        <div className="glass p-3 text-center text-xs text-muted-foreground">Готовлю следующий раунд...</div>
       )}
 
       {history.length > 0 && (
         <div className="glass p-3 text-[10px]">
           <div className="text-gold/70 uppercase tracking-widest mb-1">История</div>
-          {history.map(h => (
-            <div key={h.round} className="flex items-center gap-2">
+          {history.map((h, i) => (
+            <div key={i} className="flex items-center gap-2">
               <span className="text-muted-foreground">R{h.round}:</span>
               <span>{ICON[h.creator]}</span>
               <span className="text-muted">vs</span>
               <span>{ICON[h.opponent]}</span>
-              <span className="text-gold">→ {h.winner === 'tie' ? 'ничья' : (h.winner === 'creator' ? creator.display_name : opponent.display_name)}</span>
+              <span className="text-gold flex-1">
+                {h.winner === 'tie'
+                  ? '⚖ ничья'
+                  : h.winner === 'creator'
+                    ? `→ ${creator.display_name}`
+                    : `→ ${opponent.display_name}`}
+              </span>
             </div>
           ))}
         </div>
@@ -1469,17 +1515,32 @@ function DemoMode({ type }: { type: MiniGameType }) {
 }
 
 // ============================================================
-// COIN FLIP — оба выбирают, монетка подбрасывается
+// COIN FLIP — оба выбирают сторону, монетка подбрасывается красиво в 3D
+// Если выбрали одинаково — раунд переигрывается.
 // ============================================================
 
 function CoinFlipGame(p: GameProps) {
   const { challenge, rd, isCreator, creator, opponent, sb, notify, addHistory, gameLabel, gameType } = p;
   const [busy, setBusy] = useState(false);
   const [flipping, setFlipping] = useState(false);
+  const [showResult, setShowResult] = useState<'heads' | 'tails' | null>(null);
 
   const myPick  = isCreator ? rd.coin_creator_pick  : rd.coin_opponent_pick;
   const oppPick = isCreator ? rd.coin_opponent_pick : rd.coin_creator_pick;
-  const result = rd.coin_result;
+  const result = rd.coin_result ?? null;
+
+  // Когда result обновился из БД — оба клиента запускают анимацию у себя
+  useEffect(() => {
+    if (result && !showResult) {
+      setFlipping(true);
+      setShowResult(null);
+      const t = setTimeout(() => {
+        setShowResult(result);
+        setFlipping(false);
+      }, 1900);
+      return () => clearTimeout(t);
+    }
+  }, [result, showResult]);
 
   const choose = async (pick: 'heads' | 'tails') => {
     if (busy || myPick) return;
@@ -1488,63 +1549,104 @@ function CoinFlipGame(p: GameProps) {
     const cp = updated.coin_creator_pick;
     const op = updated.coin_opponent_pick;
     if (cp && op) {
-      // Если оба загадали одно и то же — ничья по правилам? Сделаем проще: только один может быть прав.
-      // Если выбрали одинаково — рандом.
-      setFlipping(true);
+      // Если выбрали одинаково — переигровка.
+      if (cp === op) {
+        setTimeout(async () => {
+          await patchResult(sb, challenge.id, {
+            coin_creator_pick: undefined,
+            coin_opponent_pick: undefined,
+          });
+        }, 1500);
+        setBusy(false);
+        return;
+      }
+      // Иначе — подбрасываем
+      const resCoin: 'heads' | 'tails' = Math.random() < 0.5 ? 'heads' : 'tails';
+      // Записываем результат в БД — оба клиента увидят и запустят анимацию через useEffect
+      await patchResult(sb, challenge.id, { coin_result: resCoin });
+      // Через 2 секунды (после анимации) — финиш
       setTimeout(async () => {
-        const resCoin: 'heads' | 'tails' = Math.random() < 0.5 ? 'heads' : 'tails';
         const cWin = cp === resCoin;
-        const oWin = op === resCoin;
-        let winnerSide: 'creator' | 'opponent';
-        if (cWin && !oWin) winnerSide = 'creator';
-        else if (oWin && !cWin) winnerSide = 'opponent';
-        else winnerSide = Math.random() > 0.5 ? 'creator' : 'opponent';
-        const details = `Выпало ${resCoin === 'heads' ? '«орёл»' : '«решка»'} · ${creator.display_name}: ${cp === 'heads' ? 'орёл' : 'решка'} · ${opponent.display_name}: ${op === 'heads' ? 'орёл' : 'решка'}`;
-        const finalUpdated = await patchResult(sb, challenge.id, { coin_result: resCoin });
-        await finishMatch({ sb, challenge, creator, opponent, winnerSide, details, notify, addHistory, gameLabel, gameType, rdExtra: finalUpdated });
-        setFlipping(false);
-      }, 1500);
+        const winnerSide: 'creator' | 'opponent' = cWin ? 'creator' : 'opponent';
+        const details = `Выпало ${resCoin === 'heads' ? '👑 Орёл' : '✦ Решка'} · ${creator.display_name}: ${cp === 'heads' ? 'орёл' : 'решка'} · ${opponent.display_name}: ${op === 'heads' ? 'орёл' : 'решка'}`;
+        await finishMatch({ sb, challenge, creator, opponent, winnerSide, details, notify, addHistory, gameLabel, gameType,
+          rdExtra: { coin_result: resCoin } });
+      }, 2100);
     }
     setBusy(false);
   };
+
+  const sameChoice = !!myPick && !!oppPick && myPick === oppPick;
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <div className={cn('glass p-3 text-center', myPick && 'gold-border')}>
           <div className="text-[10px] uppercase text-gold/70">Вы</div>
-          <div className="text-3xl mt-2">{myPick === 'heads' ? '🪙' : myPick === 'tails' ? '⚪' : '❓'}</div>
-          <div className="text-[10px] mt-1">{myPick === 'heads' ? 'Орёл' : myPick === 'tails' ? 'Решка' : '—'}</div>
+          {myPick ? (
+            <div className="mt-2">
+              <Coin3D side={myPick} size={64} />
+              <div className="text-[10px] mt-1"><CoinSideLabel side={myPick} /></div>
+            </div>
+          ) : (
+            <div className="text-4xl mt-2">❓</div>
+          )}
         </div>
         <div className={cn('glass p-3 text-center', oppPick && 'gold-border')}>
           <div className="text-[10px] uppercase text-gold/70">{isCreator ? opponent.display_name : creator.display_name}</div>
-          <div className="text-3xl mt-2">{oppPick && (myPick || result) ? (oppPick === 'heads' ? '🪙' : '⚪') : (oppPick ? '🔒' : '⏳')}</div>
-          <div className="text-[10px] mt-1">{oppPick && (myPick || result) ? (oppPick === 'heads' ? 'Орёл' : 'Решка') : '...'}</div>
+          {oppPick && myPick ? (
+            <div className="mt-2">
+              <Coin3D side={oppPick} size={64} />
+              <div className="text-[10px] mt-1"><CoinSideLabel side={oppPick} /></div>
+            </div>
+          ) : (
+            <div className="text-4xl mt-2">{oppPick ? '🔒' : '⏳'}</div>
+          )}
         </div>
       </div>
 
-      <div className="glass-strong p-4 text-center">
-        {result ? (
-          <>
-            <div className="text-[10px] uppercase tracking-widest text-gold/70">Выпало</div>
-            <div className="text-6xl mt-2">{result === 'heads' ? '🪙' : '⚪'}</div>
-            <div className="font-bold mt-1">{result === 'heads' ? 'Орёл' : 'Решка'}</div>
-          </>
-        ) : flipping ? (
-          <>
-            <div className="text-6xl animate-bounce">🪙</div>
-            <div className="text-xs text-amber-300 mt-2">Подбрасываем...</div>
-          </>
+      <div className="glass-strong p-4 text-center"
+        style={{ background: 'radial-gradient(circle at center top, rgba(212,175,55,0.18) 0%, transparent 70%)' }}>
+        {sameChoice && !result ? (
+          <div className="space-y-2">
+            <div className="text-amber-300 font-bold">⚖ Оба выбрали одну сторону</div>
+            <div className="text-xs text-muted-foreground">Раунд переигрывается, выбирайте заново</div>
+          </div>
+        ) : result || flipping ? (
+          <div className="space-y-3">
+            <div className="text-[10px] uppercase tracking-widest text-gold/70">
+              {flipping ? '🪙 Монетка в воздухе...' : 'Выпало'}
+            </div>
+            <div className="flex justify-center py-4" style={{ minHeight: 180 }}>
+              <Coin3D side={showResult ?? result} flipping={flipping} size={140} />
+            </div>
+            {!flipping && showResult && (
+              <div className="font-heading text-2xl font-bold text-gradient-gold animate-fade-in">
+                <CoinSideLabel side={showResult} />
+              </div>
+            )}
+          </div>
         ) : !myPick ? (
           <>
-            <div className="text-sm font-bold mb-2">Выберите сторону</div>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => choose('heads')} disabled={busy} className="btn-primary">🪙 Орёл</button>
-              <button onClick={() => choose('tails')} disabled={busy} className="btn-secondary">⚪ Решка</button>
+            <div className="text-sm font-bold mb-3">Выберите сторону монетки</div>
+            <div className="flex justify-center gap-4 mb-3">
+              <button onClick={() => choose('heads')} disabled={busy}
+                className="flex flex-col items-center gap-1 active:scale-95 transition">
+                <Coin3D side="heads" size={88} />
+                <span className="text-xs font-bold text-gold">👑 Орёл</span>
+              </button>
+              <button onClick={() => choose('tails')} disabled={busy}
+                className="flex flex-col items-center gap-1 active:scale-95 transition">
+                <Coin3D side="tails" size={88} />
+                <span className="text-xs font-bold text-rose-300">✦ Решка</span>
+              </button>
             </div>
           </>
         ) : (
-          <div className="text-sm text-muted-foreground">Жду выбор соперника...</div>
+          <div className="space-y-2">
+            <Coin3D side={myPick} size={88} className="animate-coin-shimmer" />
+            <div className="text-sm text-muted-foreground">Ставка принята. Жду соперника...</div>
+          </div>
         )}
       </div>
     </div>

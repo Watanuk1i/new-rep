@@ -217,8 +217,36 @@ input[type="datetime-local"], input[type="date"], select, textarea {
   0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.40); }
   50% { box-shadow: 0 0 0 6px rgba(212, 175, 55, 0); }
 }
+@keyframes shake {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  20% { transform: translateY(-8px) rotate(-12deg); }
+  40% { transform: translateY(0) rotate(0); }
+  60% { transform: translateY(-8px) rotate(12deg); }
+  80% { transform: translateY(0) rotate(0); }
+}
+
+/* Coin flip — 3D-вращение монетки в воздухе. Финальная сторона
+   выставляется через переменную --coin-final (0deg = решка, 1980deg = орёл наверху). */
+@keyframes coinFlip {
+  0% { transform: translateY(0) rotateX(0); }
+  35% { transform: translateY(-110px) rotateX(900deg); }
+  70% { transform: translateY(-50px) rotateX(1620deg); }
+  100% { transform: translateY(0) rotateX(var(--coin-final, 1980deg)); }
+}
+@keyframes coinShimmer {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.4); }
+}
 
 .animate-fade-in { animation: fadeIn 0.25s ease-out; }
 .animate-slide-up { animation: slideUp 0.25s ease-out; }
 .animate-slide-down { animation: slideDown 0.25s ease-out; }
 .animate-pulse-gold { animation: pulseGold 2.5s ease-in-out infinite; }
+.animate-shake { animation: shake 0.5s ease-in-out infinite; }
+.animate-coin-flip { animation: coinFlip 1.8s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+.animate-coin-shimmer { animation: coinShimmer 1.5s ease-in-out infinite; }
+
+/* 3D scene helpers */
+.perspective-coin { perspective: 800px; }
+.preserve-3d { transform-style: preserve-3d; }
+.backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
