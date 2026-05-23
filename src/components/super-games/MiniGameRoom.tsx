@@ -70,10 +70,20 @@ export function MiniGameRoom({ game }: { game: SuperGame }) {
   // Универсальное лобби: показываем перед стартом игры.
   // Игры могут поднять status = 'active' либо в onStart колбэке, либо через свои действия.
   if (isInLobby(st)) {
+    // Минимум игроков по типу игры
+    const minByType: Record<string, number> = {
+      mini_red_black: 2,
+      mini_blind_bid: 2,
+      mini_liar_dice: 2,
+      mini_despair_21: 1,
+      mini_ransom: 1,
+      mini_joker: 2,
+    };
     return (
       <MiniGameLobby
         game={game}
         state={st}
+        minPlayers={minByType[game.type] ?? 2}
         onStart={async () => { await startMiniGame(game); }}
       />
     );
@@ -93,18 +103,37 @@ export function MiniGameRoom({ game }: { game: SuperGame }) {
 }
 
 /**
- * Стартует малую игру: переводит статус в 'active'. Для red_black и slots
- * это разрешает выбор/действия. Деньги списываются в момент действия игрока,
- * как и было раньше — но кнопки появятся только после старта.
+ * Стартует малую игру: переводит статус в 'active'. Для red_black/blind_bid/liar_dice/despair_21
+ * также сразу списывает входные ставки, чтобы игроки могли начать действовать без отдельного
+ * шага «оплатить ставку».
  */
 async function startMiniGame(game: SuperGame) {
   const sb = getSupabase();
   if (!sb) return;
-  const { data } = await sb.from('super_games').select('state').eq('id', game.id).single();
-  const cur = (data?.state ?? {}) as any;
+  const { data } = await sb.from('super_games').select('state, bank, participant_ids, entry_fee, type').eq('id', game.id).single();
+  if (!data) return;
+  const cur = (data.state ?? {}) as any;
+  const stake = data.entry_fee ?? cur.stake ?? 0;
+  const participants = (data.participant_ids ?? []) as string[];
+  const link = `/super-games/${game.id}`;
+  const feePaid: Record<string, number> = { ...(cur.fee_paid ?? {}) };
+  let added = 0;
+
+  // Собираем ставки сразу при старте — кроме liar_dice/despair_21 (там нужна особая раздача)
+  // и blind_bid (там ставка = выбор суммы каждым игроком).
+  const collectImmediately = ['mini_red_black', 'mini_joker'];
+  if (stake > 0 && collectImmediately.includes(data.type)) {
+    for (const pid of participants) {
+      if ((feePaid[pid] ?? 0) > 0) continue;
+      const res = await chargeToTreasury(pid, stake, `Малая игра · ставка`, link, { noDebt: true });
+      if (res.ok) { feePaid[pid] = stake; added += stake; }
+    }
+  }
+
   await sb.from('super_games').update({
-    state: { ...cur, status: 'active' },
+    state: { ...cur, status: 'active', fee_paid: feePaid },
     status: 'live',
+    bank: (data.bank ?? 0) + added,
   }).eq('id', game.id);
 }
 
@@ -131,13 +160,6 @@ function RedBlackRoom({ game }: { game: SuperGame }) {
   return (
     <div className="space-y-3">
       <MiniHeader game={game} title="🎴 Красное / Чёрное" stake={stake} />
-
-      <StakesBlock
-        game={game} players={players} feePaid={st.fee_paid ?? {}}
-        stake={stake} isAdmin={isAdmin}
-        onCollect={() => collectStakes(game, players, stake, 'mini_red_black')}
-        onCancel={() => cancelMiniRefund(game, players, st.fee_paid ?? {})}
-      />
 
       {/* Выбор */}
       {allPaid && !finished && st.status !== 'cancelled' && (
@@ -173,9 +195,9 @@ function RedBlackRoom({ game }: { game: SuperGame }) {
             <div className="text-[11px] text-emerald-300 text-center">✓ Ваш выбор записан</div>
           )}
 
-          {isAdmin && allChose && !result && (
+          {allChose && !result && (
             <button
-              className="btn-success w-full text-xs"
+              className="btn-success w-full"
               onClick={() => revealRedBlack(game, players, stake)}
             >🎬 Раскрыть результат</button>
           )}

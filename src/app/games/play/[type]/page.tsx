@@ -90,8 +90,8 @@ interface ResultData {
   bluff_verdict?: 'truth' | 'lie';    // ответ ведущего
   bluff_phase?: 'await_statement' | 'await_guess' | 'await_gm' | 'resolved';
 
-  // find_pair — 18 пар × 36 карт
-  pair_cards?: { id: number; value: number; collected_by: 'creator' | 'opponent' | null }[];
+  // find_pair — 13 пар по рангам (красная + чёрная одного ранга = пара)
+  pair_cards?: { id: number; value: number; card?: PlayingCard; collected_by: 'creator' | 'opponent' | null }[];
   pair_flipped?: number[];
   pair_turn?: 'creator' | 'opponent';
   pair_creator_score?: number;
@@ -439,31 +439,31 @@ function ReadyView({ challenge, isCreator, rd, gameType, blocked }: {
           next.bluff_phase = 'await_statement';
         }
         if (gameType === 'find_pair') {
-          // 18 пар = 36 карт. Используем 36 карт стандартной колоды (без 2..7? возьмём первые 18 рангов с разной мастью).
-          const deck = shuffle(makeDeck52()).slice(0, 36);
-          // Делаем пары: значениям присваиваем индекс пары так чтобы каждая пара совпадала по ранг+цвет.
-          // Простой подход: из 36 берём 18 рангов, каждый встречается дважды.
-          const pairValues: number[] = [];
-          const usedRanks: Record<string, number> = {};
-          let pairId = 0;
-          for (const c of deck) {
-            const key = c.rank;
-            if (usedRanks[key] === undefined) usedRanks[key] = pairId++;
-            pairValues.push(usedRanks[key]);
-            if (pairId >= 18) break;
+          // 13 пар × 26 карт. Каждая пара — две карты одного ранга разного цвета (красный/чёрный).
+          // Это даёт уникальные пары, никаких дубликатов значений.
+          const RANKS_LIST: ('2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'10'|'J'|'Q'|'K'|'A')[] = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+          const pairs: PlayingCard[] = [];
+          let cid = 0;
+          for (const r of RANKS_LIST) {
+            // Красная карта (♥) + чёрная (♠) — итого пара с одинаковым value (ранг)
+            pairs.push({ id: cid++, suit: '♥', rank: r, value: 0 });
+            pairs.push({ id: cid++, suit: '♠', rank: r, value: 0 });
           }
-          // Перегенерим равномерно: 18 значений по 2 раза, перемешаем.
-          const values: number[] = [];
-          for (let i = 0; i < 18; i++) { values.push(i); values.push(i); }
-          const shuffled = shuffle(values);
-          next.pair_cards = shuffled.map((v, id) => ({ id, value: v, collected_by: null }));
+          // value в карточке pair-игры = индекс ранга (0..12), используется для сравнения совпадения
+          const cards = shuffle(pairs).map((c, idx) => ({
+            id: idx,
+            value: RANKS_LIST.indexOf(c.rank),
+            card: c,
+            collected_by: null as null | 'creator' | 'opponent',
+          }));
+          next.pair_cards = cards as any;
           next.pair_flipped = [];
           next.pair_turn = first;
           next.pair_creator_score = 0;
           next.pair_opponent_score = 0;
         }
         if (gameType === 'find_joker') {
-          // 10 обычных + 1 джокер из реальной колоды
+          // 11 карт: 10 обычных + 1 джокер. Игрок может выбрать ЛЮБУЮ позицию.
           const regulars = shuffle(makeDeck52()).slice(0, 10);
           const joker: PlayingCard = { id: 99, suit: '♠', rank: 'A', value: 0, joker: true };
           const deck = shuffle([...regulars, joker]);
@@ -1333,9 +1333,6 @@ function FindPairGame(p: GameProps) {
     }
   };
 
-  // 18 эмодзи для пар
-  const PAIR_EMOJIS = ['🍒','🍋','🍊','💎','7️⃣','⭐','🍀','🔔','🍇','🍉','🍓','🍑','🌟','🎴','♠️','♥️','♣️','♦️'];
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-around glass p-2 text-xs">
@@ -1345,26 +1342,24 @@ function FindPairGame(p: GameProps) {
       </div>
 
       <div className="text-center text-[10px] uppercase tracking-widest text-gold/70">
-        {turn === 'me' ? 'Ваш ход — откройте 2 карты' : 'Ход соперника...'}
+        {turn === 'me' ? 'Ваш ход — откройте 2 карты одного ранга' : 'Ход соперника...'}
       </div>
 
-      <div className="grid grid-cols-6 gap-1.5">
-        {cards.map((card, i) => {
-          const open = flipped.includes(i) || card.collected_by !== null;
-          const collected = card.collected_by !== null;
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5 justify-items-center">
+        {cards.map((c, i) => {
+          const open = flipped.includes(i) || c.collected_by !== null;
+          const collected = c.collected_by !== null;
+          const realCard = c.card;
+          const canFlip = turn === 'me' && !open && !isLocked && flipped.length < 2;
           return (
-            <button
-              key={card.id}
-              onClick={() => flip(i)}
-              disabled={turn !== 'me' || open || isLocked || flipped.length >= 2}
-              className={cn(
-                'aspect-[2/3] rounded-md border text-xl flex items-center justify-center transition-all active:scale-95',
-                open ? 'bg-gold/15 border-gold/50' : 'bg-gradient-to-br from-fuchsia-900 to-purple-950 border-gold/30',
-                collected && 'opacity-30',
-              )}
-            >
-              {open ? PAIR_EMOJIS[card.value % PAIR_EMOJIS.length] : '✦'}
-            </button>
+            <PlayingCardView
+              key={c.id}
+              card={open && realCard ? realCard : undefined}
+              faceDown={!open}
+              size="sm"
+              dim={collected}
+              onClick={canFlip ? () => flip(i) : undefined}
+            />
           );
         })}
       </div>
@@ -1387,35 +1382,47 @@ function FindJokerGame(p: GameProps) {
   const drawn = rd.joker_drawn || [];
   const turn = rd.joker_turn === 'creator' ? (isCreator ? 'me' : 'opp') : (isCreator ? 'opp' : 'me');
   const [busy, setBusy] = useState(false);
+  const [drawnId, setDrawnId] = useState<number | null>(null);
 
-  const draw = async () => {
-    if (turn !== 'me' || busy || deck.length === 0) return;
+  // Какие id уже вытянуты — отдельный сет для скрытия.
+  const drawnIds = new Set(drawn.map(d => d.card.id));
+
+  const draw = async (cardIdx: number) => {
+    if (turn !== 'me' || busy) return;
+    const card = deck[cardIdx];
+    if (!card || drawnIds.has(card.id)) return;
     setBusy(true);
-    const card = deck[0];
-    const newDeck = deck.slice(1);
-    const idx = drawn.length;
-    const by: 'creator' | 'opponent' = isCreator ? 'creator' : 'opponent';
-    const newDrawn = [...drawn, { idx, card, by }];
+    setDrawnId(card.id);
 
-    const updated = await patchResult(sb, challenge.id, {
-      joker_deck: newDeck,
-      joker_drawn: newDrawn,
-      joker_turn: isCreator ? 'opponent' : 'creator',
-    });
+    // Анимация переворота 0.6с — потом отправляем результат
+    setTimeout(async () => {
+      const idx = drawn.length;
+      const by: 'creator' | 'opponent' = isCreator ? 'creator' : 'opponent';
+      const newDrawn = [...drawn, { idx, card, by }];
 
-    if (card.joker) {
-      // Кто вытянул джокера — проиграл.
-      const winnerSide: 'creator' | 'opponent' = isCreator ? 'opponent' : 'creator';
-      const details = `${isCreator ? creator.display_name : opponent.display_name} вытянул(а) джокера 🃏 на карте #${idx + 1}`;
-      await finishMatch({ sb, challenge, creator, opponent, winnerSide, details, notify, addHistory, gameLabel, gameType, rdExtra: updated });
-    }
-    setBusy(false);
+      // Удаляем карту из деки (логически — сохраняем порядок остальных)
+      const newDeck = deck.filter((_, i) => i !== cardIdx);
+
+      const updated = await patchResult(sb, challenge.id, {
+        joker_deck: newDeck,
+        joker_drawn: newDrawn,
+        joker_turn: isCreator ? 'opponent' : 'creator',
+      });
+
+      if (card.joker) {
+        const winnerSide: 'creator' | 'opponent' = isCreator ? 'opponent' : 'creator';
+        const details = `${isCreator ? creator.display_name : opponent.display_name} вытянул(а) 🃏 джокера на ходу #${idx + 1}`;
+        await finishMatch({ sb, challenge, creator, opponent, winnerSide, details, notify, addHistory, gameLabel, gameType, rdExtra: updated });
+      }
+      setBusy(false);
+      setDrawnId(null);
+    }, 600);
   };
 
   return (
     <div className="space-y-3">
       <div className="glass p-3">
-        <div className="text-[10px] uppercase text-gold/70 mb-2">Сброс</div>
+        <div className="text-[10px] uppercase text-gold/70 mb-2">📜 Сброс</div>
         {drawn.length === 0 ? (
           <div className="text-xs text-muted-foreground">Карты ещё никто не тянул</div>
         ) : (
@@ -1430,23 +1437,35 @@ function FindJokerGame(p: GameProps) {
         )}
       </div>
 
-      <div className="glass-strong p-4 text-center space-y-2">
-        <div className="text-xs text-muted-foreground">В колоде осталось: <b>{deck.length}</b> карт</div>
-        <div className="flex justify-center gap-1">
-          {Array.from({ length: Math.min(deck.length, 11) }).map((_, i) => (
-            <PlayingCardView key={i} faceDown size="sm" className={cn(turn === 'me' && i === 0 && 'animate-pulse', 'translate-y-0', i > 0 ? `-ml-6` : '')} />
-          ))}
+      <div className="glass-strong p-4 space-y-3"
+        style={{ background: 'radial-gradient(circle at top, rgba(212,175,55,0.12), transparent 70%)' }}>
+        <div className="text-center text-xs text-muted-foreground">
+          В колоде: <b className="text-gold">{deck.length}</b> карт. {turn === 'me'
+            ? <span className="text-gold">Ваш ход — выберите любую карту</span>
+            : <span>Ход соперника...</span>}
         </div>
-        {turn === 'me' && deck.length > 0 && (
-          <button onClick={draw} disabled={busy} className="btn-primary w-full">
-            🎴 Тянуть верхнюю карту
-          </button>
-        )}
-        {turn === 'opp' && deck.length > 0 && (
-          <div className="text-sm text-muted-foreground py-2">Ход соперника...</div>
-        )}
+        <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 justify-items-center">
+          {deck.map((card, i) => {
+            const isDrawing = drawnId === card.id;
+            return (
+              <div key={card.id}
+                className={cn('relative', isDrawing && 'animate-pulse-gold')}
+                style={{
+                  transform: isDrawing ? 'scale(1.1) rotate(8deg)' : 'none',
+                  transition: 'transform 0.5s ease',
+                }}>
+                <PlayingCardView
+                  card={isDrawing ? card : undefined}
+                  faceDown={!isDrawing}
+                  size="sm"
+                  onClick={turn === 'me' && !busy ? () => draw(i) : undefined}
+                />
+              </div>
+            );
+          })}
+        </div>
         {deck.length === 0 && (
-          <div className="text-sm text-muted-foreground py-2">Колода пуста, подвожу итог...</div>
+          <div className="text-sm text-center text-muted-foreground py-2">Колода пуста...</div>
         )}
       </div>
     </div>

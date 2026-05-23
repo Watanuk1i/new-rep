@@ -234,7 +234,9 @@ export default function GamesPage() {
 
       {tab === 'types' && (
         <div className="grid grid-cols-2 gap-3">
-          {(Object.entries(GAME_LABELS) as [MiniGameType, { label: string; icon: string }][]).map(([key, { label, icon }]) => (
+          {(Object.entries(GAME_LABELS) as [MiniGameType, { label: string; icon: string }][])
+            .filter(([key]) => key !== 'liars_bar') // Бар лжецов — супер-игра, не 1v1
+            .map(([key, { label, icon }]) => (
             <Link key={key} href={`/games/create?type=${key}`}>
               <div className="glass p-4 text-center active:scale-95 transition-transform">
                 <div className="text-3xl mb-2">{icon}</div>

@@ -21,7 +21,7 @@ const GAMES: { key: MiniGameType; label: string; icon: string }[] = [
   { key: 'bluff_duel', label: 'Блеф-дуэль', icon: '🎭' },
   { key: 'find_pair', label: 'Найди пару', icon: '🃟' },
   { key: 'find_joker', label: 'Найди Джокера', icon: '🎴' },
-  { key: 'liars_bar', label: 'Бар лжецов', icon: '🍷' },
+  // liars_bar — это супер-игра 2-6 человек, создаётся через /games "Создать малую игру"
 ];
 
 export default function CreateGamePage() {

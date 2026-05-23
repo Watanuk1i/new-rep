@@ -18,6 +18,8 @@ interface Props {
   game: SuperGame;
   /** Текущий статус игры внутри state. */
   state: { status?: string; ready_ids?: string[]; needs_gm_approval?: boolean };
+  /** Минимум игроков чтобы стартовать. По умолчанию 2. */
+  minPlayers?: number;
   /** Колбэк старта (изменит state.status на active и спишет взносы). */
   onStart: () => Promise<void>;
 }
@@ -30,7 +32,7 @@ export function isInLobby(state: { status?: string }): boolean {
   return state.status === 'waiting_players' || state.status === 'lobby' || state.status === 'ready_check';
 }
 
-export function MiniGameLobby({ game, state: gs, onStart }: Props) {
+export function MiniGameLobby({ game, state: gs, onStart, minPlayers = 2 }: Props) {
   const { state: app, currentUser, role } = useStore();
   const sb = getSupabase();
   const isAdmin = role === 'gm' || role === 'queen';
@@ -41,12 +43,13 @@ export function MiniGameLobby({ game, state: gs, onStart }: Props) {
     .filter(Boolean) as Participant[];
 
   const readyIds = new Set(gs.ready_ids ?? []);
-  const allReady = players.length > 0 && players.every(p => readyIds.has(p.id));
+  const allReady = players.length >= minPlayers && players.every(p => readyIds.has(p.id));
   const meReady = !!currentUser && readyIds.has(currentUser.id);
   const inGame = !!currentUser && players.some(p => p.id === currentUser.id);
   const isCreator = !!currentUser && (game.participant_ids ?? [])[0] === currentUser.id;
   const canStart = (isCreator || isAdmin) && allReady;
   const needsGm = !!gs.needs_gm_approval;
+  const isOpen = !!(game.state as any)?.is_open;
 
   const toggleReady = async () => {
     if (!sb || !currentUser || busy || needsGm) return;
@@ -140,6 +143,19 @@ export function MiniGameLobby({ game, state: gs, onStart }: Props) {
       </div>
 
       <div className="glass-strong p-3 space-y-2">
+        {/* Открытый сбор: любой может присоединиться к игре прямо отсюда */}
+        {isOpen && !inGame && currentUser && isPlayer(currentUser) && (
+          <button onClick={async () => {
+            if (!sb || busy) return;
+            setBusy(true);
+            const newIds = [...(game.participant_ids || []), currentUser.id];
+            await sb.from('super_games').update({ participant_ids: newIds }).eq('id', game.id);
+            setBusy(false);
+          }} className="btn-primary w-full">
+            🎯 Присоединиться к игре
+          </button>
+        )}
+
         {inGame && !needsGm && (
           <button onClick={toggleReady} disabled={busy}
             className={cn('w-full', meReady ? 'btn-secondary' : 'btn-primary')}>
@@ -150,7 +166,9 @@ export function MiniGameLobby({ game, state: gs, onStart }: Props) {
           <button onClick={start} disabled={!canStart || busy || needsGm}
             className={cn('btn-success w-full', (!canStart || busy || needsGm) && 'opacity-50 cursor-not-allowed')}>
             {needsGm ? '⏳ Ждём апрува ведущего' :
-             allReady ? '▶ Начать игру' : `▶ Начать (готовы ${readyIds.size}/${players.length})`}
+             players.length < minPlayers ? `▶ Нужно ещё ${minPlayers - players.length} игр.` :
+             !allReady ? `▶ Все нажмут «Готов» (${readyIds.size}/${players.length})` :
+             '▶ Начать игру'}
           </button>
         )}
         {(isCreator || isAdmin) && (
