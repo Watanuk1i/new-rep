@@ -213,6 +213,49 @@ ALTER TABLE help_requests ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS anon_full_access ON help_requests;
 CREATE POLICY anon_full_access ON help_requests FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
+-- ========== 5b. ИГРЫ НА ДОЛГ ==========
+
+CREATE TABLE IF NOT EXISTS debt_games (
+  id                   TEXT PRIMARY KEY,
+  type                 TEXT NOT NULL,
+  status               TEXT DEFAULT 'created',
+  debt_id              TEXT,
+  debtor_id            TEXT NOT NULL,
+  opponent_type        TEXT NOT NULL,
+  opponent_id          TEXT,
+  initial_debt_amount  BIGINT DEFAULT 0,
+  result_debt_amount   BIGINT,
+  state                JSONB DEFAULT '{}'::jsonb,
+  result               TEXT,
+  requires_approval    BOOLEAN DEFAULT FALSE,
+  approved_by_id       TEXT,
+  rules_snapshot       TEXT,
+  result_description   TEXT,
+  created_at           TIMESTAMPTZ DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ DEFAULT NOW(),
+  finished_at          TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_debt_games_status ON debt_games(status);
+CREATE INDEX IF NOT EXISTS idx_debt_games_debtor ON debt_games(debtor_id);
+CREATE INDEX IF NOT EXISTS idx_debt_games_debt   ON debt_games(debt_id);
+ALTER TABLE debt_games ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS anon_full_access ON debt_games;
+CREATE POLICY anon_full_access ON debt_games FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS debt_game_actions (
+  id           TEXT PRIMARY KEY,
+  debt_game_id TEXT NOT NULL,
+  player_id    TEXT NOT NULL,
+  action_type  TEXT NOT NULL,
+  value        TEXT,
+  amount       BIGINT,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_debt_game_actions_game ON debt_game_actions(debt_game_id);
+ALTER TABLE debt_game_actions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS anon_full_access ON debt_game_actions;
+CREATE POLICY anon_full_access ON debt_game_actions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
 -- ========== 6. РЕАЛТАЙМ ==========
 
 DO $$ BEGIN
@@ -232,6 +275,12 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL; END $$;
 DO $$ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE help_requests;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE debt_games;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE debt_game_actions;
 EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 NOTIFY pgrst, 'reload schema';

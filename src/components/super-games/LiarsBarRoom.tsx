@@ -79,6 +79,24 @@ export function LiarsBarRoom({ game }: { game: SuperGame }) {
     <div className="space-y-3">
       <Header lb={lb} bank={game.bank} entryFee={game.entry_fee ?? ENTRY_FEE_DEFAULT} />
 
+      <details className="glass p-3 group">
+        <summary className="cursor-pointer text-[11px] flex items-center justify-between">
+          <span className="text-gold/80 font-bold">📖 Как играть · правила</span>
+          <span className="text-gold/60 group-open:rotate-180 transition">▾</span>
+        </summary>
+        <div className="text-[11px] text-muted-foreground mt-2 space-y-2 leading-relaxed">
+          <p><b className="text-gold">Цель.</b> Избавиться от всех своих карт или уличить соперника во лжи.</p>
+          <p><b className="text-gold">Колода.</b> 6 Тузов + 6 Королей + 6 Дам + 2 Джокера. Каждый раунд выбирается «карта стола» — Туз, Король или Дама.</p>
+          <p><b className="text-gold">Ход.</b> Положите 1–3 карты закрыто и заявите «N карт стола» (можно блефовать). Джокер считается любой картой стола.</p>
+          <p><b className="text-gold">Обвинение.</b> Любой соперник может сказать «Лжец» вместо своего хода. Карты раскрываются:
+            если заявка была <b className="text-emerald-300">правдой</b> — обвинитель идёт на револьверную проверку;
+            если <b className="text-red-300">ложью</b> — лжец идёт на проверку.</p>
+          <p><b className="text-gold">Револьвер.</b> Шанс выстрела растёт с каждой проверкой: 1/6 → 1/5 → 1/4 → 1/3 → 1/2 → 1/1. Выстрел — игрок выбывает, ставка остаётся в банке.</p>
+          <p><b className="text-gold">Кончились карты.</b> Ход пропускается. Когда все живые скинули карты — новая раздача с новой картой стола. В дуэли (1v1): если у вас нет карт, единственный ход — обвинить соперника во лжи на его следующей заявке.</p>
+          <p><b className="text-gold">Победа.</b> Последний оставшийся за столом забирает весь банк.</p>
+        </div>
+      </details>
+
       {lb.status === 'waiting' && (
         <WaitingRoom game={game} lb={lb} />
       )}
@@ -318,8 +336,19 @@ function PlayingArea({ game, lb, me, isAdmin }: { game: SuperGame; lb: LiarsBarS
       )}
 
       {/* Ход текущего игрока */}
-      {!lb.pending_play && !lb.pending_roulette && lb.turn_player_id === me?.id && me?.alive && (
+      {!lb.pending_play && !lb.pending_roulette && lb.turn_player_id === me?.id && me?.alive && me.hand.length > 0 && (
         <MoveForm lb={lb} game={game} me={me} />
+      )}
+
+      {/* Если у меня ход, но карты кончились — пропуск (только для 3+ игроков; в 1v1 проигрываю если соперник заявит) */}
+      {!lb.pending_play && !lb.pending_roulette && lb.turn_player_id === me?.id && me?.alive && me.hand.length === 0 && (
+        <div className="glass-strong gold-border p-3 text-center space-y-2">
+          <div className="text-sm font-bold text-gold">У вас не осталось карт</div>
+          <div className="text-[11px] text-muted-foreground">
+            Ваш ход пропускается. Вы сможете обвинить другого игрока во лжи, когда он сделает заявку.
+          </div>
+          <SkipMyTurnButton game={game} me={me} />
+        </div>
       )}
 
       {/* Чужой ход */}
@@ -385,6 +414,31 @@ function MyHand({ hand }: { hand: LiarsCardKind[] }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function SkipMyTurnButton({ game, me }: { game: SuperGame; me: LiarsPlayer }) {
+  const sb = getSupabase();
+  const [busy, setBusy] = useState(false);
+  const skip = async () => {
+    if (!sb || busy) return;
+    setBusy(true);
+    const cur = await readState(game.id);
+    if (!cur) { setBusy(false); return; }
+    const nextId = nextWithCardsId(cur, me.id);
+    let next: LiarsBarState = {
+      ...cur,
+      turn_player_id: nextId,
+    };
+    next = pushLog(next, `${me.name} пропускает ход (нет карт). Ход → ${cur.players.find(p => p.id === nextId)?.name ?? '—'}`);
+    next = maybeRedeal(next);
+    await writeState(game.id, next);
+    setBusy(false);
+  };
+  return (
+    <button onClick={skip} disabled={busy} className="btn-secondary w-full text-xs">
+      ⏭ Пропустить мой ход
+    </button>
   );
 }
 
@@ -502,7 +556,8 @@ function PendingPlayView({ lb, me, game, isAdmin }: { lb: LiarsBarState; me: Lia
     setBusy(true);
     const cur = await readState(game.id);
     if (!cur || !cur.pending_play) { setBusy(false); return; }
-    // Передаём ход следующему живому игроку.
+    // Передаём ход следующему живому игроку (с картами или без).
+    // Если у нового хода пустая рука — он сможет только «Обвинить» когда кто-то заявит.
     const nextPlayerId = nextAliveId(cur.players, cur.pending_play.player_id);
     let next: LiarsBarState = {
       ...cur,
@@ -510,7 +565,6 @@ function PendingPlayView({ lb, me, game, isAdmin }: { lb: LiarsBarState; me: Lia
       turn_player_id: nextPlayerId,
     };
     next = pushLog(next, `Никто не обвинил. Ход переходит к ${cur.players.find(p => p.id === nextPlayerId)?.name ?? '—'}`);
-    // Если у текущего игрока кончились карты — перераздать
     next = maybeRedeal(next);
     await writeState(game.id, next);
     setBusy(false);
@@ -547,10 +601,13 @@ function PendingPlayView({ lb, me, game, isAdmin }: { lb: LiarsBarState; me: Lia
 }
 
 function maybeRedeal(state: LiarsBarState): LiarsBarState {
-  // Если у активного игрока кончились карты — перераздаём всем живым.
-  const turnPlayer = state.players.find(p => p.id === state.turn_player_id);
-  if (!turnPlayer || turnPlayer.hand.length > 0) return state;
-  const cardsPerPlayer = state.players.filter(p => p.alive).length >= 5 ? 4 : CARDS_PER_PLAYER;
+  // Перераздача — только когда у ВСЕХ живых игроков кончились карты И колода пуста.
+  const alivePlayers = state.players.filter(p => p.alive);
+  if (alivePlayers.length === 0) return state;
+  const someoneHasCards = alivePlayers.some(p => p.hand.length > 0);
+  if (someoneHasCards) return state;
+  // Все скинули карты — раздаём заново.
+  const cardsPerPlayer = alivePlayers.length >= 5 ? 4 : CARDS_PER_PLAYER;
   let deck = makeLiarsDeck();
   const dealt = dealHands(deck, state.players, cardsPerPlayer);
   const tableCard = pickTableCard();
@@ -561,7 +618,23 @@ function maybeRedeal(state: LiarsBarState): LiarsBarState {
     discard: [],
     table_card: tableCard,
     round_index: state.round_index + 1,
-  }, `Раздача #${state.round_index + 1}. Карта стола — ${tableCardLabel(tableCard)}.`);
+  }, `Все скинули карты. Раздача #${state.round_index + 1}. Карта стола — ${tableCardLabel(tableCard)}.`);
+}
+
+/**
+ * Найти следующего живого игрока ПОСЛЕ fromId, у которого ЕСТЬ карты в руке.
+ * Если ни у кого нет карт — возвращает первого живого (для перераздачи).
+ */
+function nextWithCardsId(state: LiarsBarState, fromId: string): string | null {
+  const alive = state.players.filter(p => p.alive);
+  if (alive.length === 0) return null;
+  const startIdx = alive.findIndex(p => p.id === fromId);
+  for (let i = 1; i <= alive.length; i++) {
+    const candidate = alive[(startIdx + i) % alive.length];
+    if (candidate.hand.length > 0) return candidate.id;
+  }
+  // Никто не имеет карт — вернём ближайшего живого.
+  return alive[(startIdx + 1) % alive.length].id;
 }
 
 // ===========================================================================
@@ -616,12 +689,25 @@ function RouletteView({ lb, game, isAdmin }: { lb: LiarsBarState; game: SuperGam
           await sb.from('super_games').update({ status: 'finished', winner_id: winner.id, bank: 0 }).eq('id', game.id);
         }
       } else {
-        // Если выбыл — ход переходит следующему живому от него
-        const fromId = eliminated ? tgt.id : (next.turn_player_id ?? tgt.id);
+        // Раунд после рулетки заканчивается — карты на столе уже в сбросе.
+        // Следующий ход начинает с того, кто прошёл проверку (если выжил),
+        // либо со следующего живого после выбывшего.
+        const fromId = eliminated ? tgt.id : tgt.id;
         const nextId = nextAliveId(newPlayers, fromId);
         next.turn_player_id = nextId;
-        next = pushLog(next, `Ход переходит к ${newPlayers.find(p => p.id === nextId)?.name ?? '—'}`);
+        // Если у нового активного игрока 0 карт — вызываем перераздачу (если у всех 0).
         next = maybeRedeal(next);
+        // Если перераздачи не было и у текущего 0 карт, ход двигается дальше до игрока с картами.
+        // Если все живые без карт — будет перераздача (см. maybeRedeal).
+        const turnPlayer = next.players.find(p => p.id === next.turn_player_id);
+        if (turnPlayer && turnPlayer.hand.length === 0) {
+          // Переключаем на следующего у кого есть карты — но только если такой есть.
+          const someoneWithCards = next.players.some(p => p.alive && p.hand.length > 0);
+          if (someoneWithCards) {
+            next.turn_player_id = nextWithCardsId(next, next.turn_player_id!);
+          }
+        }
+        next = pushLog(next, `Ход переходит к ${next.players.find(p => p.id === next.turn_player_id)?.name ?? '—'}`);
       }
       await writeState(game.id, next);
       setShooting(false);

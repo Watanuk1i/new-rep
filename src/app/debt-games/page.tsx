@@ -233,7 +233,7 @@ function CreateGameModal({ type, onClose }: { type: DebtGameType; onClose: () =>
     if (type === 'three_seals' || type === 'kirumi_ransom_table') {
       initialState = { cards: type === 'three_seals' ? shuffleSeals() : shuffleKirumiCards(), revealed_idx: null };
     }
-    await sb.from('debt_games').insert({
+    const { error: insertErr } = await sb.from('debt_games').insert({
       id, type, status: isAdmin ? 'active' : 'waiting_approval',
       debt_id: selectedDebt.id,
       debtor_id: debtorId,
@@ -244,6 +244,17 @@ function CreateGameModal({ type, onClose }: { type: DebtGameType; onClose: () =>
       requires_approval: false,
       rules_snapshot: meta.rules,
     });
+    if (insertErr) {
+      console.error('[debt_games insert]', insertErr);
+      const msg = insertErr.message || '';
+      if (msg.includes('relation') && msg.includes('does not exist')) {
+        alert('Таблица debt_games не создана в БД. Запустите миграцию supabase/migration_debt_games.sql или supabase/migration_full_v4.sql в Supabase SQL Editor.');
+      } else {
+        alert('Ошибка создания игры: ' + msg);
+      }
+      setBusy(false);
+      return;
+    }
     // Уведомления
     const notes: any[] = [];
     if (debtorId !== currentUser.id) {
