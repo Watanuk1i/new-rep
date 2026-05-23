@@ -9,6 +9,7 @@ import { Yen, YenIcon } from '@/components/ui/Yen';
 import { cn, getStatusLabel, SPRITE_SHEETS, isPlayer } from '@/lib/utils';
 import { getSupabase } from '@/lib/supabase/client';
 import { payoutFromTreasury } from '@/lib/store/tx';
+import { BIG_GAMES } from '@/lib/superGames/catalog';
 import type { Participant, ParticipantStatus, PariMarket, Debt, Rumor, ContentBlock } from '@/lib/store/types';
 
 export const dynamic = 'force-dynamic';
@@ -500,26 +501,42 @@ function SuperGamesAdmin() {
   const { state } = useStore();
   const sb = getSupabase();
   const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState('');
   const [type, setType] = useState('minority_rule');
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [rules, setRules] = useState('');
   const [stakes, setStakes] = useState('');
   const [entryFee, setEntryFee] = useState(100000);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const others = state.participants.filter(p => isPlayer(p));
+  const others = state.participants.filter(p => isPlayer(p) && p.is_active);
 
-  const minPlayers = type === 'nine_bullets' ? 7 : type === 'minority_rule' ? 2 : 1;
-  const isLiveType = type === 'minority_rule' || type === 'nine_bullets';
+  // При смене типа — подтягиваем шаблон.
+  const applyTemplate = (t: string) => {
+    setType(t);
+    const tpl = BIG_GAMES.find(x => x.type === t);
+    if (tpl) {
+      setTitle(tpl.label);
+      setDescription(tpl.description);
+      setRules(tpl.rules);
+      setEntryFee(tpl.defaultEntryFee);
+    }
+  };
+
+  const meta = BIG_GAMES.find(x => x.type === type);
+  const minPlayers = meta?.minPlayers ?? 1;
+  const isLive = meta?.isLive ?? false;
 
   const create = async () => {
     if (!sb || !title.trim()) return;
     if (selected.size < minPlayers) {
-      alert(`Для типа «${type}» нужно минимум ${minPlayers} участников.`);
+      alert(`Для типа «${meta?.label ?? type}» нужно минимум ${minPlayers} участников.`);
       return;
     }
     const id = uid('sg');
     const ids = Array.from(selected);
+    // Если поле «Ставки» содержит число — это и есть entryFee, иначе используется defaultEntryFee.
+    const stakesNumber = parseInt(stakes.replace(/\D/g, ''), 10);
+    const finalEntryFee = !isNaN(stakesNumber) && stakesNumber > 0 ? stakesNumber : entryFee;
     await sb.from('super_games').insert({
       id, title: title.trim(), type,
       description: description.trim() || null,
@@ -528,7 +545,7 @@ function SuperGamesAdmin() {
       status: 'scheduled',
       participant_ids: ids,
       spectator_bets_enabled: true,
-      entry_fee: type === 'minority_rule' ? entryFee : 0,
+      entry_fee: finalEntryFee,
       bank: 0,
       state: {},
     });
@@ -558,58 +575,49 @@ function SuperGamesAdmin() {
 
   return (
     <div className="space-y-3">
-      <CardShipCreator />
-      <RoyalRouletteCreator />
-      <ContrabandCreator />
-      <DebtTowerCreator />
-      <DebtAuctionCreator />
-      <EliteTrialCreator />
-      <RebellionCreator />
-      <ThroneCreator />
-      <MiniGamesCreator />
+      <div className="text-[10px] uppercase tracking-widest text-gold/70 mb-1">Управление Большими играми</div>
 
       <button onClick={() => setCreating(!creating)} className="btn-primary w-full">
-        {creating ? '✕ Отмена' : '+ Создать Супер игру'}
+        {creating ? '✕ Отмена' : '+ Создать Большую игру'}
       </button>
 
       {creating && (
         <div className="glass-strong p-4 space-y-3 animate-slide-down">
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Название" className="input-field" />
-          <select value={type} onChange={e => setType(e.target.value)} className="input-field">
-            <option value="minority_rule">Правило меньшинства (live · от 2 чел.)</option>
-            <option value="nine_bullets">Комната девяти патронов (live · от 7 чел.)</option>
-            <option value="collar">Игра ошейника</option>
-            <option value="status_tower">Башня статуса</option>
-            <option value="queen_throne">Трон Селестии</option>
-            <option value="emperor">Император, гражданин, раб</option>
-            <option value="custom">Своя</option>
-          </select>
-          {isLiveType && (
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">Тип игры</label>
+            <select value={type} onChange={e => applyTemplate(e.target.value)} className="input-field">
+              {BIG_GAMES.map(g => (
+                <option key={g.type} value={g.type}>{g.label}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-muted mt-1">
+              При выборе типа сразу подставляются стандартное название, описание, правила и взнос. Можно поправить вручную.
+            </p>
+          </div>
+
+          {isLive && (
             <div className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2 py-1.5">
               ⚡ Интерактивная игра — управление пройдёт через комнату /super-games/[id].
-              {type === 'nine_bullets' && ' Деньги ходят через Казну студсовета и напрямую между игроками.'}
             </div>
           )}
-          <input value={description} onChange={e => setDescription(e.target.value)}
-            placeholder="Описание" className="input-field" />
-          <textarea value={rules} onChange={e => setRules(e.target.value)}
-            placeholder="Правила" className="input-field min-h-[80px] resize-none" />
-          <input value={stakes} onChange={e => setStakes(e.target.value)}
-            placeholder="Ставки (для информации игрокам)" className="input-field" />
 
-          {type === 'minority_rule' && (
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
-                Взнос с каждого участника (ейн)
-              </label>
-              <input type="number" value={entryFee} min={0} step={10000}
-                onChange={e => setEntryFee(Math.max(0, Number(e.target.value)))}
-                className="input-field font-mono" />
-              <p className="text-[10px] text-muted mt-1">
-                Списывается при старте игры в банк. У кого нет — ведущий получит алерт.
-              </p>
-            </div>
-          )}
+          <input value={title} onChange={e => setTitle(e.target.value)}
+            placeholder="Название" className="input-field" />
+          <textarea value={description} onChange={e => setDescription(e.target.value)}
+            placeholder="Описание" className="input-field min-h-[60px] resize-none" />
+          <textarea value={rules} onChange={e => setRules(e.target.value)}
+            placeholder="Правила" className="input-field min-h-[120px] resize-none" />
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
+              Ставки (взнос с участника, ¥)
+            </label>
+            <input value={stakes} onChange={e => setStakes(e.target.value)}
+              placeholder={`По умолчанию: ${entryFee.toLocaleString('ru-RU')}`}
+              className="input-field" />
+            <p className="text-[10px] text-muted mt-1">
+              Если оставить пустым — взнос берётся из шаблона ({entryFee.toLocaleString('ru-RU')} ¥). Если введёте «200000» — будет 200 000 ¥ вместо стандартных.
+            </p>
+          </div>
 
           <div>
             <label className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1 block">
@@ -633,7 +641,16 @@ function SuperGamesAdmin() {
         </div>
       )}
 
+      {/* Малые игры — отдельный блок (только GM) */}
+      <details className="glass p-3">
+        <summary className="cursor-pointer text-sm font-bold">🎯 Малые игры (для админа)</summary>
+        <div className="mt-3">
+          <MiniGamesCreator />
+        </div>
+      </details>
+
       <div className="space-y-2">
+        <div className="text-[10px] uppercase tracking-widest text-gold/70 mt-2">Существующие игры</div>
         {state.superGames.map(g => (
           <Link key={g.id} href={`/super-games/${g.id}`} className="glass p-3 block active:scale-[0.99]">
             <div className="flex items-center justify-between gap-2">
